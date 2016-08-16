@@ -1,0 +1,17 @@
+# distributions created with distutils
+/dist/
+/build/
+
+# too large folders
+
+# distribution or temporary files
+*.egg-info
+*~
+*.pyc
+*.tar
+*.gz
+
+# ommit data files
+*.sdf
+*.png
+
