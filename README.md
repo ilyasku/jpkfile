@@ -1,6 +1,6 @@
 # jpkfile
 
-jpkfile is a module for reading of data archives recorded with (JPK Instruments)[http://www.jpk.com/].
+jpkfile is a module for reading of data archives recorded with [JPK Instruments](http://www.jpk.com/).
 
 # Install
 
@@ -8,10 +8,10 @@ Currently jpkfile has only one relevant python file *jpkfile.py*, which makes "i
 One way to do so is to add a *.pth* file containing the path to the folder as text to your user's *site-packages* folder:
 * On my Ubuntu 14.04 machine, the site-packages folder is at `/home/user-name/.local/lib/python2.7/site-packages`
 * If yours isn't there, you can figure it out by starting python in the command line and typing 
-'''
+```
 >>> import site
 >>> site.USER_SITE
-'''
+```
 * Open a new file in a text editor, enter the path to the folder containing the jpkfile module.
 * Save the file into the site-packages folder.
 That's it. You should now be able to import jpkfile anywhere on your system.

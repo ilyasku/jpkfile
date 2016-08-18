@@ -6,14 +6,22 @@ import numpy as np
 
 ## Dictionary assigning item length (in .dat files) and struckt.unpack abbreviation
 # to the keys used in header files (.properties).
-DATA_TYPES = {'short':(2,'h'),'unsignedshort':(2,'h')}
+DATA_TYPES = {'short':(2,'h'),'unsignedshort':(2,'H'),
+              'integer-data':(4,'i'), 'signedinteger':(4,'i'),
+              'float-data':(4,'f')}
 
 DEFAULT_CONVERSION_CHAIN = {'height': ('nominal',),
                             'vDeflection' : ('distance','force'),
                             'hDeflection' : (),
                             'strainGaugeHeight' : (),
-                            'error':()}
+                            'error':(),
+                            'xSignal1':()}
 
+ARCHIVE_TYPES = {"simple-force-scan-series-header":'force',
+                 "nt-force-scan-series-header": 'nt-force'}
+
+
+debug = True
 
 class JPKFile:
 
@@ -25,6 +33,9 @@ class JPKFile:
         self.parameters = {}
         self.num_segments = 0
         self.segments = {}
+        self.archive_type = ""
+        self.has_shared_header = False
+        self.shared_parameters = None
 
         self.read_files()
 
@@ -35,6 +46,21 @@ class JPKFile:
         top_header_content = top_header_f.readlines()
         
         self.parameters.update(parse_header_file(top_header_content))
+
+        self.archive_type = ARCHIVE_TYPES[self.parameters['force-scan-series']['header']['type']]
+
+        list_of_filenames = [f.filename for f in self._zip.filelist]
+
+        if list_of_filenames.count("shared-data/header.properties"):
+            self.has_shared_header = True
+            self.shared_parameters = {}
+            shared_header = self._zip.filelist.pop(list_of_filenames.index("shared-data/header.properties"))
+            shared_header_f = self._zip.open(shared_header)
+            shared_header_content = shared_header_f.readlines()
+
+            self.shared_parameters.update(parse_header_file(shared_header_content))
+
+
 
         for zip_f in self._zip.filelist[1:]:
             fname = zip_f.filename
@@ -48,7 +74,7 @@ class JPKFile:
                     segment = int(split[1])
 
                     if segment>self.num_segments-1:
-                        new_JPKSegment = JPKSegment()
+                        new_JPKSegment = JPKSegment(self.has_shared_header, self.shared_parameters)
                         new_JPKSegment.index = segment
                         self.segments[segment] = new_JPKSegment
                         self.num_segments += 1
@@ -65,19 +91,70 @@ class JPKFile:
                         channel_label = split[3][:-4]
                         data_f = self._zip.open(fname)
                         content = data_f.read()
+
+                        if debug:
+                            print segment, channel_label
+
+                        shared = False
+                        if self.has_shared_header:
+                            if self.segments[segment].parameters['channel'][channel_label].keys().count('lcd-info'):
+                                shared = True
+
+                        #if self.archive_type == 'force':
+                        if not shared:
+
+                            if debug:
+                                print "NOT SHARED" 
+
+
+                            dtype = self.segments[segment].parameters['channel'][channel_label]['data']['type']
+
+                            encoder_parameters = None
+                            if self.segments[segment].parameters['channel'][channel_label].keys().count('data'):
+                                if self.segments[segment].parameters['channel'][channel_label]['data'].keys().count('encoder'):
+                                    encoder_parameters = self.segments[segment].parameters['channel'][channel_label]['data']['encoder']
+
+                            conversion_parameters = None
+                            if self.segments[segment].parameters['channel'][channel_label].keys().count('conversion-set'):
+                                if self.segments[segment].parameters['channel'][channel_label]['conversion-set'].keys().count('conversion'):
+                                    conversion_parameters = self.segments[segment].parameters['channel'][channel_label]['conversion-set']
+
+                            if not encoder_parameters:
+                                sys.stderr.write("WARNING! Did not find encoder parameters!\n")
+
+                            if not conversion_parameters:
+                                sys.stderr.write("WARNING! Did not find conversion parameters!\n")
                         
-                        dtype = self.segments[segment].parameters['channel'][channel_label]['data']['type']
+                        else:
+                            if debug:
+                                print "SHARED"
+
+                            shared_parameters_index = self.segments[segment].parameters['channel'][channel_label]['lcd-info']['*']
+                            shared_parameters = self.shared_parameters['lcd-info'][shared_parameters_index]
+
+                            dtype = shared_parameters['type']
+                            
+
+                            encoder_parameters = None
+                            if shared_parameters.keys().count('encoder'):
+                                encoder_parameters = shared_parameters['encoder']
+                                
+                            conversion_parameters = None
+                            if shared_parameters.keys().count('conversion-set'):
+                                if shared_parameters['conversion-set'].keys().count('conversion'):
+                                    conversion_parameters = shared_parameters['conversion-set']
+
+                            if not encoder_parameters:
+                                sys.stderr.write("WARNING! Did not find encoder parameters!\n")
+
+                            if not conversion_parameters:
+                                sys.stderr.write("WARNING! Did not find conversion parameters!\n")
+                            
                         num_points = int(self.segments[segment].parameters['force-segment-header']['num-points'])
-
-                        
-
-
-                        encoder_parameters = self.segments[segment].parameters['channel'][channel_label]['data']['encoder']
-                        conversion_parameters = self.segments[segment].parameters['channel'][channel_label]['conversion-set']['conversion']
-
+                            
                         data = extract_data(content, dtype, num_points)
                         self.segments[segment].data[channel_label] = (data , {'encoder_parameters': encoder_parameters, 'conversion_parameters': conversion_parameters})
-                        
+                                                    
                 
             else:
                 sys.stderr.write("ERROR! Encountered new folder '%s'.\nDo not know how to handle that.")
@@ -117,11 +194,14 @@ class JPKFile:
 
 class JPKSegment:
 
-    def __init__(self):
+    def __init__(self, parent_has_shared_header = False, shared_properties = None):
         
         self.parameters = {}
         self.data = {}
         self.index = None
+        self.parent_has_shared_header = parent_has_shared_header
+        self.shared_properties = shared_properties
+
 
     def get_time(self, offset = 0):
         return self.data['t']+offset
@@ -133,9 +213,12 @@ class JPKSegment:
         units = {}
         for c in channels:
             #try:
-            d,unit = self.get_decoded_data(c)
-            #except:
-                #d,unit = (self.data[c][0],'digital')
+            if decode:
+                d,unit = self.get_decoded_data(c)
+            
+            else:
+                d,unit = (self.data[c][0],'digital')
+
             if d.shape[0] != shape[0]:
                 sys.stderr.write("ERROR! Number of points in data channel '%s' does not match expected number of %i\n" % (c,shape[0]))
                 sys.exit(1)
@@ -149,25 +232,35 @@ class JPKSegment:
         
 
 
-    def get_decoded_data(self,channel, conversions_to_be_applied = None):
-        
+    def get_decoded_data(self,channel, conversions_to_be_applied = 'auto'):
+
         unit = 'digital'
 
         encoder_parameters = self.data[channel][1]['encoder_parameters']
-        conversion_parameters = self.data[channel][1]['conversion_parameters']
+        conversion_parameters = self.data[channel][1]['conversion_parameters']['conversion']
         data = self.data[channel][0]
 
         raw = data[:]
-        multiplier_raw = float(encoder_parameters['scaling']['multiplier'])
-        offset_raw = float(encoder_parameters['scaling']['offset'])
-        raw = multiplier_raw * raw + offset_raw
+        if encoder_parameters:
+            if encoder_parameters['scaling']['style'] == 'offsetmultiplier':
+                multiplier_raw = float(encoder_parameters['scaling']['multiplier'])
+                offset_raw = float(encoder_parameters['scaling']['offset'])
+                raw = multiplier_raw * raw + offset_raw
 
-        unit = encoder_parameters['scaling']['unit']['unit']
+                unit = encoder_parameters['scaling']['unit']['unit']
+            else:
+                sys.stderr.write("ERROR! Can only handle converters of type 'offsetmultiplier' so far.")
+                sys.exit(1)
 
-        if conversions_to_be_applied == None:
-            conversions_to_be_applied = DEFAULT_CONVERSION_CHAIN[channel]
-            if len(conversions_to_be_applied) == 0:
-                msg = """WARNING! You request decoding of a channel for which no
+        else:
+            sys.stderr.write("WARNING! No encoder parameters found for channel '%s'.\n" % channel)
+
+
+        if type(conversions_to_be_applied) == str:
+            if conversions_to_be_applied == 'default':
+                conversions_to_be_applied = DEAULT_CONVERSION_CHAIN[channel]
+                if len(conversions_to_be_applied) == 0:
+                    msg = """WARNING! You request decoding of a channel for which no
 default conversion scheme is present. You can apply 
 a temporary conversion scheme by passing a list or tuple
 of conversion key words in the parameter 
@@ -182,33 +275,49 @@ Also, it would be awesome if you could let me know what
 default conversion scheme works for you, so I could 
 probably include it in the latest version of jpkfile.
 Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
-                sys.stderr.write(msg)
-
-        conversion_keys = conversion_parameters.keys()
-
-        
-        for c in conversions_to_be_applied:
-            
-            if not conversion_keys.count(c):
-                sys.stderr.write("ERROR! Requested conversion '%s' can't be applied,\nno parameters for '%s' found in jpk header." % (c,c))
-                sys.exit(1)
-                return
+                    sys.stderr.write(msg)
+            elif conversions_to_be_applied == 'auto':
+                conversions_to_be_applied = determine_conversions_automatically(self.data[channel][1]['conversion_parameters'])
             else:
-                if conversion_parameters[c]['defined'] == 'false':
-                    sys.stderr.write("ERROR! Requested conversion '%s' can't be applied!\nThis conversion was specified as not defined\nin jpk header file." % c)
+                sys.stderr.write("WARNING! Unknown string '%s' for function JPKFile.get_decoded_data's parameter conversions_to_be_applied.\nValid strings: 'auto' and 'default'.\nWill now use 'auto'.\n")
+                conversions_to_be_applied = determine_conversions_automatically(self.data[channel][1]['conversion_parameters'])
+
+        if conversion_parameters:
+
+            conversion_keys = conversion_parameters.keys()
+            for c in conversions_to_be_applied:
+
+                if not conversion_keys.count(c):
+                    sys.stderr.write("ERROR! Requested conversion '%s' can't be applied,\nno parameters for '%s' found in jpk header." % (c,c))
                     sys.exit(1)
                     return
+                else:
+                    if conversion_parameters[c]['defined'] == 'false':
+                        sys.stderr.write("ERROR! Requested conversion '%s' can't be applied!\nThis conversion was specified as not defined\nin jpk header file." % c)
+                        sys.exit(1)
+                        return
 
 
+            if debug:
+                print("="*70)
+                print("APPLYING CONVERSIONS")
+            for c in conversions_to_be_applied:
+                if debug:
+                    print(c)
+                if conversion_parameters[c]['scaling']['style'] == 'offsetmultiplier':
 
-        for c in conversions_to_be_applied:
-            
-            multiplier = float(conversion_parameters[c]['scaling']['multiplier'])
-            offset = float(conversion_parameters[c]['scaling']['offset'])
-            
-            raw = raw * multiplier + offset
+                    multiplier = float(conversion_parameters[c]['scaling']['multiplier'])
+                    offset = float(conversion_parameters[c]['scaling']['offset'])
 
-            unit = conversion_parameters[c]['scaling']['unit']['unit']
+                    raw = raw * multiplier + offset
+
+                    unit = conversion_parameters[c]['scaling']['unit']['unit']
+
+                else:
+                    sys.stderr.write("ERROR! Can only handle converters of type 'offsetmultiplier' so far.")
+                    sys.exit(1)
+        else:
+            sys.stderr.write("WARNING! No conversion parameters found for channel '%s'.\n" % channel)
                         
         return raw,unit
 
@@ -244,6 +353,26 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
             return s
             
             
+
+def determine_conversions_automatically(conversion_set_dictionary):
+
+    conversions = [conversion_set_dictionary['conversions']['default']]
+    raw_name = conversion_set_dictionary['conversions']['base']
+    
+    list_of_defined_conversions = conversion_set_dictionary['conversions']['list'].split()
+
+
+    chain_complete = False
+    while not chain_complete:
+        key = conversions[-1]
+        previous_conversion = conversion_set_dictionary['conversion'][key]['base-calibration-slot']
+        if previous_conversion == raw_name:
+            chain_complete = True
+        else:
+            conversions.append(previous_conversion)
+    
+    conversions.reverse()
+    return conversions
 
 
 def extract_data(content, dtype, num_points):
