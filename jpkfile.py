@@ -21,7 +21,7 @@ ARCHIVE_TYPES = {"simple-force-scan-series-header":'force',
                  "nt-force-scan-series-header": 'nt-force'}
 
 
-debug = True
+debug = False
 
 class JPKFile:
 

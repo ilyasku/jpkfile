@@ -1,6 +1,7 @@
 # jpkfile
 
-jpkfile is a module for reading of data archives recorded with [JPK Instruments](http://www.jpk.com/).
+jpkfile is a module for reading of data archives recorded with [JPK Instruments](http://www.jpk.com/).  
+I am sorry for the lack of comments and documentation. This project is in a very early stage. Instead, you can have a look at the file in the `examples` folder.
 
 # Install
 
@@ -15,6 +16,10 @@ One way to do so is to add a *.pth* file containing the path to the folder as te
 * Open a new file in a text editor, enter the path to the folder containing the jpkfile module.
 * Save the file into the site-packages folder.
 That's it. You should now be able to import jpkfile anywhere on your system.
+
+# First Steps
+
+You can have a look at the `read_data_from_jpk_archive.py` file, or, if you have jupyter/ipython notebook installed, at the `read_data_from_jpk_archive.ipynb` file in the examples folder. Those examples show you first steps how to use the jpkfile module.
 
 # License 
 
