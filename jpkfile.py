@@ -162,7 +162,8 @@ class JPKFile:
             
     def get_array(self, channels = [], decode = True):
         data, units = self.segments[0].get_array(channels, decode)
-        for s in self.segments[1:]:
+        for i in range(1,len(self.segments)):
+            s = self.segments[i]
             d, u = s.get_array(channels, decode)
             if u == units:
                 data = np.concatenate((data,d))
