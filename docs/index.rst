@@ -16,7 +16,8 @@ Contents:
    :maxdepth: 2
 
    intro
-
+   source
+   structure
 
 Indices and tables
 ==================

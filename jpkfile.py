@@ -1,11 +1,14 @@
+"""This is the jpkfile module. It reads content of data archives created with devices by JPK Instruments."""
+
+
 from struct import unpack
 from zipfile import ZipFile
 from dateutil import parser
 import sys
 import numpy as np
 
-## Dictionary assigning item length (in .dat files) and struckt.unpack abbreviation
-# to the keys used in header files (.properties).
+#: Dictionary assigning item length (in .dat files) and struckt.unpack abbreviation
+#: to the keys used in header files (.properties).
 DATA_TYPES = {'short':(2,'h'),'unsignedshort':(2,'H'),
               'integer-data':(4,'i'), 'signedinteger':(4,'i'),
               'float-data':(4,'f')}
@@ -17,51 +20,81 @@ DEFAULT_CONVERSION_CHAIN = {'height': ('nominal',),
                             'error':(),
                             'xSignal1':()}
 
+#: Dictionary assigning archive type as specified in header files
+#: to file extension suffix (e.g. jpk-force, jpk-nt-force).
 ARCHIVE_TYPES = {"simple-force-scan-series-header":'force',
                  "nt-force-scan-series-header": 'nt-force'}
 
-
+#: Set this to `True` in source file to enable debugging output.
 debug = False
 
 class JPKFile:
+    """Class to unzip a JPK archive and handle access to its headers and data.
 
-    def __init__(self,fname):
-        
+    :param fname: Filename of archive to read data from.
+    :type fname: str"""
+    
+
+    def __init__(self,fname):        
+        """Initializes JPKFile object."""
 
         self._zip = ZipFile(fname)
         self.data = None
+        #: Dictionary containing parameters read from the top level 
+        #: ``header.properties`` file.
         self.parameters = {}
+        #: Number of segments in archive.
         self.num_segments = 0
+        #: Dictionary containing one JPKSegment instance per segment.
         self.segments = {}
         self.archive_type = ""
+        #: Will be set to ``True`` if archive has a shared header, ``False`` otherwise
         self.has_shared_header = False
+        #: ``None`` if no shared header is present, dictionary containing parameters otherwise.
         self.shared_parameters = None
 
         self.read_files()
 
     def read_files(self):
-        
+        """Crawls through list of files in archive and processes them automatically
+by name and extension. It populates :py:attr:`parameters` and :py:attr:`segments` with content. For different file types present in JPK archives, 
+have a look at the :doc:`structure of JPK archives <structure>`."""
+
+
+        # top header should also be present and the first file in the filelist.
         top_header = self._zip.filelist[0].filename
         top_header_f = self._zip.open(top_header)
         top_header_content = top_header_f.readlines()
         
+        # parse content of top header file to self.parameters.
         self.parameters.update(parse_header_file(top_header_content))
 
+        # read archive type from header parameters (self.archive_type unused so far ...)
         self.archive_type = ARCHIVE_TYPES[self.parameters['force-scan-series']['header']['type']]
 
+        # create list of file names in archive (strings, not only file handles).
         list_of_filenames = [f.filename for f in self._zip.filelist]
 
+        # if shared header is present ...
         if list_of_filenames.count("shared-data/header.properties"):
+            # ... set this to True,
             self.has_shared_header = True
             self.shared_parameters = {}
+            # and remove it from list of files.
             shared_header = self._zip.filelist.pop(list_of_filenames.index("shared-data/header.properties"))
             shared_header_f = self._zip.open(shared_header)
             shared_header_content = shared_header_f.readlines()
-
+            # Parse header content to dictionary.
             self.shared_parameters.update(parse_header_file(shared_header_content))
 
 
-
+        # The remaining files should be structured in segments.
+        # The loop is checking for every file in which segment folder it is, and 
+        # whether it's a segment header or data file.
+        # For each new segment folder it encounters, a JPKSegment object is created
+        # and added to the self.segments dictionary.
+        # The JPKSegment is then populated by contents of the segment's
+        # header and data files.
         for zip_f in self._zip.filelist[1:]:
             fname = zip_f.filename
             
@@ -71,7 +104,7 @@ class JPKFile:
                 if len(split)<3:
                     pass
                 else:
-                    segment = int(split[1])
+                    segment = int(split[1]) # `split[1]` should be the segment's number.
 
                     if segment>self.num_segments-1:
                         new_JPKSegment = JPKSegment(self.has_shared_header, self.shared_parameters)
@@ -86,6 +119,7 @@ class JPKFile:
                         #self.data['t'] = np.linspace(0.0,float(self.segments[segment].parameters['force-segment-header']['duration']), int(self.segments[segment].parameters['force-segment-header']['num-points']))
                         self.segments[segment].data['t'] = np.arange(0.0,float(self.segments[segment].parameters['force-segment-header']['duration']), float(self.segments[segment].parameters['force-segment-header']['duration'])/float(self.segments[segment].parameters['force-segment-header']['num-points']))
                     
+                    # .dat is the extension for data files.
                     elif len(split) == 4 and split[3][-4:] == ".dat":
 
                         channel_label = split[3][:-4]
@@ -161,6 +195,7 @@ class JPKFile:
                 sys.exit(1)
             
     def get_array(self, channels = [], decode = True):
+        """"""
         data, units = self.segments[0].get_array(channels, decode)
         for i in range(1,len(self.segments)):
             s = self.segments[i]
