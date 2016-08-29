@@ -2,6 +2,9 @@
 /dist/
 /build/
 
+# built documentation
+*_build*
+
 # too large folders
 
 # distribution or temporary files
