@@ -13,6 +13,11 @@ DATA_TYPES = {'short':(2,'h'),'unsignedshort':(2,'H'),
               'integer-data':(4,'i'), 'signedinteger':(4,'i'),
               'float-data':(4,'f')}
 
+# NOT COMPLETE, CURRENTLY NOT USED!
+# Idea: Chain of conversions for different channels to fall back to
+#       if automatic detection of conversion protocols fails, and
+#       if no conversion is manually defined in 
+#       function JPKSegment.get_decoded_data.
 DEFAULT_CONVERSION_CHAIN = {'height': ('nominal',),
                             'vDeflection' : ('distance','force'),
                             'hDeflection' : (),
@@ -195,12 +200,22 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
                 sys.exit(1)
             
     def get_array(self, channels = [], decode = True):
-        """"""
+        """
+        Returns channel data from all segments in a numpy array; in addition, reads physical 
+        units as specified by header files.
+
+        :param channels: List of channels (channel names, i.e. strings) of which to return data.
+        :param decode: Determines whether data is to be decoded, i.e. transformed according to transformation parameters defined in header files.
+        :type decode: bool
+        :return: Tuple with two items: (1) Numpy array with labeled columns, one column per requested channel; (2) dictionary assigning units to channels."""
+        
+        # reads data and units of first segment
         data, units = self.segments[0].get_array(channels, decode)
         for i in range(1,len(self.segments)):
             s = self.segments[i]
             d, u = s.get_array(channels, decode)
             if u == units:
+                # concatenates data of segment `i` to array `data`
                 data = np.concatenate((data,d))
             else:
                 msg = "ERROR in JPKFile.get_array!\nCould not concatenate data of all segments: units not matching\n"
@@ -209,6 +224,15 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
         return data, units
 
     def get_info(self, issue = 'general'):
+        """
+        Request a string on a certain issue.  
+        Currently only one `issue` keyword is possible: 'segments'. This returns a 
+        summary/overview on segment properties.
+
+        :param issue: Keyword/issue on which to request information.
+        :type issue: str
+        :return: String on requested issue.
+        """
         if issue == 'segments':
             s = ""
             s = s + "=" * 70 + "\n"
@@ -218,10 +242,6 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
                 s = s + str(i) + "\t" + self.segments[i].get_info('type') + "\t" + \
                     self.segments[i].get_info('num-points') + '\t\t' + self.segments[i].get_info('duration')+ '\n'
             s = s + "=" * 70 + "\n"
-            #s = s + "SEGMENT\tNUMBER OF POINTS\n"
-            #s = s + "-------\t----------------\n"
-            #for i in range(len(self.segments)):
-            #s = s + str(i) + "\t" + self.segments[i].get_info('type') + '\n'
             
         return s
                 
@@ -229,10 +249,19 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
         
 
 class JPKSegment:
-
+    """
+    Class to hold data and parameters of a single segment in a JPK archive.
+    It is usually created internally when handling a JPK archive with the JPKFile class.
+    
+    :param parent_has_shared_header: True, if JPKFile finds shared header in JPK archive, False otherwise.
+    :type parent_has_shared_header: bool
+    :param shared_properties: If parent_has_shared_header is True, this parameter needs to hold the dictionary containing the header's contents. Otherwise it is None."""
     def __init__(self, parent_has_shared_header = False, shared_properties = None):
-        
+        """Constructor."""
+        #: Dictionary holding parameters read from segment header.
         self.parameters = {}
+        #: Dictionary assigning numpy arrays containing data and definitions on how 
+        #: to convert raw data to physical data to all channels present in this segment.
         self.data = {}
         self.index = None
         self.parent_has_shared_header = parent_has_shared_header
@@ -240,15 +269,24 @@ class JPKSegment:
 
 
     def get_time(self, offset = 0):
+        """Returns time-stamps, increased by possible offset."""
         return self.data['t']+offset
 
     def get_array(self, channels = [], decode = True):
+        """
+        Constructs a numpy array containing data of given channels. If `decode` is True (default),
+        data is converted following conversions defined in segment's header (or shared header).
+
+        :param channels: List of channels (channel names, i.e. strings) of which to return data.
+        :param decode: Determines whether data is to be decoded, i.e. transformed according to transformation parameters defined in header files.
+        :type decode: bool
+        :return: Tuple with two items: (1) Numpy array with labeled columns, one column per requested channel; (2) dictionary assigning units to channels.
+        """
         _data = {}
         dtypes = []
         shape = self.data[channels[0]][0].shape
         units = {}
         for c in channels:
-            #try:
             if decode:
                 d,unit = self.get_decoded_data(c)
             
@@ -269,7 +307,21 @@ class JPKSegment:
 
 
     def get_decoded_data(self,channel, conversions_to_be_applied = 'auto'):
-
+        """
+        Get decoded data of one channel. 'decoded' here means the raw, digital data 
+        gets converted (to physical data) following certain conversion steps. These steps
+        should be defined in the JPK archive's header files. This routine tries to 
+        read those conversion steps from those header files by default 
+        (`conversions_to_be_applied='auto'`). Alternatively, you can pass a list of
+        conversion keywords as `conversions_to_be_applied` manually
+        (see documentation on :doc:`JPK archive structures <structure>` for an overview
+        of what I think how conversion rules are stored in the header files ...).
+        
+        :param channel: Name of channel to convert data of.
+        :type channel: str
+        :param conversions_to_be_applied: Specifying what conversions to apply, see description above.
+        :return: Tuple with 2 items; (1) Single-column numpy array containing converted data; (2) Unit as read for last conversion step from header file.
+        """
         unit = 'digital'
 
         encoder_parameters = self.data[channel][1]['encoder_parameters']
@@ -277,6 +329,8 @@ class JPKSegment:
         data = self.data[channel][0]
 
         raw = data[:]
+        # Independet of `conversions_to_be_applied`, the first step of conversion
+        # apparently has to be as defined by encoder parameters.
         if encoder_parameters:
             if encoder_parameters['scaling']['style'] == 'offsetmultiplier':
                 multiplier_raw = float(encoder_parameters['scaling']['multiplier'])
@@ -292,6 +346,10 @@ class JPKSegment:
             sys.stderr.write("WARNING! No encoder parameters found for channel '%s'.\n" % channel)
 
 
+
+
+        # If conversions_to_be_applied is a string, it should be either 'default' or 'auto'.
+        # I recommend always using auto, unless you encounter any problems due to conversion.
         if type(conversions_to_be_applied) == str:
             if conversions_to_be_applied == 'default':
                 conversions_to_be_applied = DEAULT_CONVERSION_CHAIN[channel]
@@ -362,14 +420,16 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
         Request information (string) on some issue.
         This is basically just a more user-friendly assignment of
         parameters of interest to single keywords.
-        For the 'issue' parameter the following strings are valid:
-            * 'general' (default)
-            * 'channels'
-            * 'num-points'
-            * 'duration'
-            * 'type'
-        @param issue Keyword specifying what kind of information is asked for.
-        @return string or list of strings.
+        For the `issue` parameter the following strings are valid:
+         * 'general' (default)
+         * 'channels'
+         * 'num-points'
+         * 'duration'
+         * 'type'
+
+        :param issue: Keyword specifying what kind of information is asked for.
+        :type issue: str
+        :return: String or list of strings containing requested information.
         """
         d = {'channels': self.parameters['channels']['list'],
              'num-points': self.parameters['force-segment-header']['num-points'],
@@ -391,18 +451,35 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
             
 
 def determine_conversions_automatically(conversion_set_dictionary):
-
-    conversions = [conversion_set_dictionary['conversions']['default']]
-    raw_name = conversion_set_dictionary['conversions']['base']
+    """
+    Takes all parameters on how to convert some channel's data read from a header file 
+    to determine the chain of conversion steps automatically.
     
-    list_of_defined_conversions = conversion_set_dictionary['conversions']['list'].split()
+    :param conversion_set_dictionary: Dictionary of 'conversion-set' parameters as parsed from header file with function `parse_header_file`.
+    :type conversion_set_dictionary: dict
+    :return: List of conversion keywords."""
 
+    # Conversions is a list that will hold the converion keywords.
+    # When populating this list in the following while loop, the 
+    # order of conversions needs to be reversed. The list is 
+    # initiated in the following line with the last conversion step's
+    # keyword as first item.
+    conversions = [conversion_set_dictionary['conversions']['default']]
+    # This is the name of the first conversion to be applied (usually
+    # from digital back to the analogue potential in voltage).
+    raw_name = conversion_set_dictionary['conversions']['base']
+
+    # This lits should contain keywords of all conversions necessary to 
+    # go from first conversion (`raw_name`) to last (first item in `conversions`)
+    list_of_defined_conversions = conversion_set_dictionary['conversions']['list'].split()
 
     chain_complete = False
     while not chain_complete:
         key = conversions[-1]
         previous_conversion = conversion_set_dictionary['conversion'][key]['base-calibration-slot']
         if previous_conversion == raw_name:
+            # Completion is reached when the name of the preceding converion 
+            # matches that of the first converion.
             chain_complete = True
         else:
             conversions.append(previous_conversion)
@@ -412,6 +489,21 @@ def determine_conversions_automatically(conversion_set_dictionary):
 
 
 def extract_data(content, dtype, num_points):
+    """
+    Converts data from contents of .dat files in the JPKArchive to
+    python-understandable formats.
+    This function requires the binary `content`, the `dtype` of the 
+    binary content as read from the appropiate header file, and the
+    number of points as specified in the header file to double check
+    the conversion.
+
+    :param content: Binary content of a .dat file.
+    :type content: str
+    :param dtype: Data type as read from heade file.
+    :type dtype: str
+    :param num_points: Expected number of points encoded in binary content.
+    :type num_points: int
+    :return: Numpy array containing digital (non-physical, unconverted) data."""
     point_length, type_code = DATA_TYPES[dtype]
 
     data = []
@@ -460,6 +552,9 @@ def parse_header_file(content):
     return header_dict
 
 
+
+## NOT IN USE! MAYBE A STUPID IDEA ANYHOW ... 
+# :todo: decide whether to throw this out or make something useful out of it.
 def print_table(content, col_labels = [], row_labels = [], 
                 min_col_space = 0, col_sep_character = '|', row_sep_character = '-', 
                 header_sep_character = "=", max_cell_width = 30):
