@@ -9,7 +9,7 @@ import numpy as np
 
 #: Dictionary assigning item length (in .dat files) and struckt.unpack abbreviation
 #: to the keys used in header files (.properties).
-DATA_TYPES = {'short':(2,'h'),'unsignedshort':(2,'H'),
+DATA_TYPES = {'short':(2,'h'),'short-data':(2,'h'), 'unsignedshort':(2,'H'),
               'integer-data':(4,'i'), 'signedinteger':(4,'i'),
               'float-data':(4,'f')}
 
@@ -58,16 +58,19 @@ class JPKFile:
         #: ``None`` if no shared header is present, dictionary containing parameters otherwise.
         self.shared_parameters = None
 
-        self.read_files()
+        # create list of file names in archive (strings, not only file handles).
+        list_of_filenames = [f.filename for f in self._zip.filelist]
 
-    def read_files(self):
+        self.read_files(list_of_filenames)
+
+    def read_files(self, list_of_filenames):
         """Crawls through list of files in archive and processes them automatically
 by name and extension. It populates :py:attr:`parameters` and :py:attr:`segments` with content. For different file types present in JPK archives, 
 have a look at the :doc:`structure of JPK archives <structure>`."""
 
 
         # top header should also be present and the first file in the filelist.
-        top_header = self._zip.filelist[0].filename
+        top_header = list_of_filenames.pop(list_of_filenames.index('header.properties'))
         top_header_f = self._zip.open(top_header)
         top_header_content = top_header_f.readlines()
         
@@ -75,10 +78,7 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
         self.parameters.update(parse_header_file(top_header_content))
 
         # read archive type from header parameters (self.archive_type unused so far ...)
-        self.archive_type = ARCHIVE_TYPES[self.parameters['force-scan-series']['header']['type']]
-
-        # create list of file names in archive (strings, not only file handles).
-        list_of_filenames = [f.filename for f in self._zip.filelist]
+        #self.archive_type = ARCHIVE_TYPES[self.parameters['force-scan-series']['header']['type']]
 
         # if shared header is present ...
         if list_of_filenames.count("shared-data/header.properties"):
@@ -86,7 +86,7 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
             self.has_shared_header = True
             self.shared_parameters = {}
             # and remove it from list of files.
-            shared_header = self._zip.filelist.pop(list_of_filenames.index("shared-data/header.properties"))
+            shared_header = list_of_filenames.pop(list_of_filenames.index("shared-data/header.properties"))
             shared_header_f = self._zip.open(shared_header)
             shared_header_content = shared_header_f.readlines()
             # Parse header content to dictionary.
@@ -100,9 +100,9 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
         # and added to the self.segments dictionary.
         # The JPKSegment is then populated by contents of the segment's
         # header and data files.
-        for zip_f in self._zip.filelist[1:]:
-            fname = zip_f.filename
-            
+        for fname in list_of_filenames:#for zip_f in self._zip.filelist[1:]:
+            #fname = zip_f.filename
+
             split = fname.split("/")
 
             if split[0] == "segments":
@@ -194,9 +194,10 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
                         data = extract_data(content, dtype, num_points)
                         self.segments[segment].data[channel_label] = (data , {'encoder_parameters': encoder_parameters, 'conversion_parameters': conversion_parameters})
                                                     
-                
+            
+
             else:
-                sys.stderr.write("ERROR! Encountered new folder '%s'.\nDo not know how to handle that.")
+                sys.stderr.write("ERROR! Encountered new folder '%s'.\nDo not know how to handle that." % split[0])
                 sys.exit(1)
             
     def get_array(self, channels = [], decode = True):
@@ -209,19 +210,36 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
         :type decode: bool
         :return: Tuple with two items: (1) Numpy array with labeled columns, one column per requested channel; (2) dictionary assigning units to channels."""
         
-        # reads data and units of first segment
-        data, units = self.segments[0].get_array(channels, decode)
-        for i in range(1,len(self.segments)):
-            s = self.segments[i]
-            d, u = s.get_array(channels, decode)
-            if u == units:
-                # concatenates data of segment `i` to array `data`
-                data = np.concatenate((data,d))
-            else:
-                msg = "ERROR in JPKFile.get_array!\nCould not concatenate data of all segments: units not matching\n"
-                sys.stderr.write(msg)
-                sys.exit(1)
-        return data, units
+
+        ## FIRST: need to check whether requested channels are present in all segments.
+        # Didn't know before this was possible, but apparently channels are not necc.
+        # the same in all segments.
+        present_in_all_segments = True
+        for i in range(self.num_segments):
+            for c in channels:
+                if not self.segments[i].data.keys().count(c):
+                    present_in_all_segments = False
+                    sys.stderr.write("WARNING: requested channel %s not present in segment %i\n" % (c, i))
+                    break
+            
+        
+        if present_in_all_segments:
+            # reads data and units of first segment
+            data, units = self.segments[0].get_array(channels, decode)
+            for i in range(1,len(self.segments)):
+                s = self.segments[i]
+                d, u = s.get_array(channels, decode)
+                if u == units:
+                    # concatenates data of segment `i` to array `data`
+                    data = np.concatenate((data,d))
+                else:
+                    msg = "ERROR in JPKFile.get_array!\nCould not concatenate data of all segments: units not matching\n"
+                    sys.stderr.write(msg)
+                    sys.exit(1)
+            return data, units
+        else:
+            sys.stderr.write("I recommend extracting data of segments separately by using JPKFile.segments[i].get_array(channels = [...]).")
+            return None, None
 
     def get_info(self, issue = 'general'):
         """
@@ -431,10 +449,23 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
         :type issue: str
         :return: String or list of strings containing requested information.
         """
-        d = {'channels': self.parameters['channels']['list'],
-             'num-points': self.parameters['force-segment-header']['num-points'],
-             'duration': self.parameters['force-segment-header']['duration'],
-             'type': self.parameters['force-segment-header']['settings']['style']}
+
+        if not self.parent_has_shared_header:
+            d = {'channels': self.parameters['channels']['list'],
+                 'num-points': self.parameters['force-segment-header']['num-points'],
+                 'duration': self.parameters['force-segment-header']['duration'],
+                 'type': self.parameters['force-segment-header']['settings']['style']}
+        else:
+            if self.parameters['force-segment-header'].keys().count('force-segment-header-info'):
+                d = {'channels': self.parameters['channels']['list'],
+                     'num-points': self.parameters['force-segment-header']['num-points'],
+                     'duration': self.parameters['force-segment-header']['duration']}
+                d['type'] = self.shared_properties['force-segment-header-info'][self.parameters['force-segment-header']['force-segment-header-info']['*']]['settings']['style']
+            else:
+                d = {'channels': self.parameters['channels']['list'],
+                     'num-points': self.parameters['force-segment-header']['num-points'],
+                     'duration': self.parameters['force-segment-header']['duration'],
+                     'type': self.parameters['force-segment-header']['settings']['style']}
     
         if not issue == 'general':
             return d[issue]
@@ -448,7 +479,109 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
             s = s + "=" * 70 + "\n"
             return s
             
+
+class JPKMap:
+
+    def __init__(self, fname):
+        
+        self._zip = ZipFile(fname)
             
+        self.num_indices = 0
+        self.indices = {}
+
+        self.parameters = {}
+
+        self.has_shared_header = False
+        self.shared_parameters = None
+        
+        self.read_files()
+
+    def read_files(self):
+
+        list_of_filenames = [f.filename for f in self._zip.filelist]
+
+        top_header_f = self._zip.open(list_of_filenames.pop(list_of_filenames.index('header.properties')))
+        top_header_content = top_header_f.readlines()
+
+        # parse content of top header file to self.parameters.
+        self.parameters.update(parse_header_file(top_header_content))
+
+        if list_of_filenames.count("shared-data/header.properties"):
+            # ... set this to True,
+            self.has_shared_header = True
+            self.shared_parameters = {}
+            # and remove it from list of files.
+            shared_header = list_of_filenames.pop(list_of_filenames.index("shared-data/header.properties"))
+            shared_header_f = self._zip.open(shared_header)
+            shared_header_content = shared_header_f.readlines()
+            # Parse header content to dictionary.
+            self.shared_parameters.update(parse_header_file(shared_header_content))
+
+        index_lists_of_filenames = {}
+
+        for fname in list_of_filenames:
+            
+            split = fname.split("/")
+
+            if split[0] == "index":
+                if len(split)<3:
+                    pass
+                else:
+                    index = int(split[1])
+
+                    if index > self.num_indices-1:
+                        
+                        index_lists_of_filenames[index] = []
+                        self.num_indices += 1
+                        
+                    _fname = '/'.join(split[2:])
+                    if _fname:
+                        index_lists_of_filenames[index].append(_fname)
+
+        for i in index_lists_of_filenames.keys():
+
+            virtual_zip = VirtualZipFile(self._zip, index_lists_of_filenames[i], "index/"+str(i)+"/")
+            new_JPKFile = JPKFileForJPKMap(virtual_zip, self.has_shared_header, self.shared_parameters)
+
+            self.indices[i] = new_JPKFile
+                    
+
+
+class VirtualZipFile:
+
+    def __init__(self, parent_zip, excerpt_list_of_filenames, prefix):
+
+        self.parent_zip = parent_zip
+        self.list_of_filenames = excerpt_list_of_filenames
+        self.prefix = prefix
+
+    def open(self, fname):
+        return self.parent_zip.open(self.prefix + fname)
+
+class JPKFileForJPKMap(JPKFile):
+
+    def __init__(self, virtual_zip, has_shared_header, shared_parameters):
+
+        self._zip = virtual_zip
+        self.data = None
+        #: Dictionary containing parameters read from the top level 
+        #: ``header.properties`` file.
+        self.parameters = {}
+        #: Number of segments in archive.
+        self.num_segments = 0
+        #: Dictionary containing one JPKSegment instance per segment.
+        self.segments = {}
+        self.archive_type = ""
+        #: Will be set to ``True`` if archive has a shared header, ``False`` otherwise
+        self.has_shared_header = has_shared_header
+        #: ``None`` if no shared header is present, dictionary containing parameters otherwise.
+        self.shared_parameters = shared_parameters
+
+        list_of_filenames = self._zip.list_of_filenames
+
+        self.read_files(list_of_filenames)
+        
+        self.index = None
 
 def determine_conversions_automatically(conversion_set_dictionary):
     """
