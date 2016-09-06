@@ -481,13 +481,25 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
             
 
 class JPKMap:
-
+    """
+    Loads a JPK map file (ending on '.jpk-force-map') to the buffer. This map consists
+    of multiple 'pixels', each of which is a single force recording at one position.
+    This makes maps a collection of recordings. To get the single pixels to work in 
+    a similar way as the JPKFile objects and to make the whole module more modular (!?) ,
+    I created a class based on JPKFile called JPKFileForJPKMap, which requires a 
+    VirtualZipFile object instead of the path to a zip file. This makes the whole 
+    concept a bit harder to follow, but it makes the pixels behave as JPKFile objects.
+    This class is not yet outfitted with many helpful functions to retrieve or analyse 
+    data of the map. The problem is, I don't really know what is useful and what isn't,
+    since I never worked with maps. If you want a feature added, feel free to send me
+    a message or open an issue on github or implement it yourself and send a pull request.
+    """
     def __init__(self, fname):
-        
+        """Constructor"""
         self._zip = ZipFile(fname)
             
         self.num_indices = 0
-        self.indices = {}
+        self.flat_indices = {}
 
         self.parameters = {}
 
@@ -497,7 +509,9 @@ class JPKMap:
         self.read_files()
 
     def read_files(self):
-
+        """Crawls through list of files in archive and processes them automatically
+        by name and extension. It populates :py:attr:`parameters` and :py:attr:`flat_indices` with content. For different file types present in JPK archives, 
+        have a look at the :doc:`structure of JPK archives <structure>`."""
         list_of_filenames = [f.filename for f in self._zip.filelist]
 
         top_header_f = self._zip.open(list_of_filenames.pop(list_of_filenames.index('header.properties')))
@@ -543,9 +557,31 @@ class JPKMap:
             virtual_zip = VirtualZipFile(self._zip, index_lists_of_filenames[i], "index/"+str(i)+"/")
             new_JPKFile = JPKFileForJPKMap(virtual_zip, self.has_shared_header, self.shared_parameters)
 
-            self.indices[i] = new_JPKFile
+            self.flat_indices[i] = new_JPKFile
                     
 
+    def get_single_pixel(self, index):
+        pattern_type = self.parameters['force-scan-map']['position-pattern']['type']
+        
+        if pattern_type == 'grid-position-pattern':
+            if type(index) == tuple or type(index) == list:
+                i = int(self.parameters['force-scan-map']['position-pattern']['grid']['ilength'])
+                j = int(self.parameters['force-scan-map']['position-pattern']['grid']['jlength'])
+                if i > index[0] and j > index[1]:
+                    return self.flat_indices[i*index[0]+index[1]]
+                else:
+                    sys.stderr.write("ERROR! Index is [%i,%i], but max range is limited to [%i,%i].\n" % (index[0],index[1],i-1,j-1))
+                    return
+
+            else:
+                sys.stderr.write("WARNING! Detected grid pattern for this map, you should\nspecify index as a list/tuple of two values, i-index and j-index.\n")
+                if type(index) == int:
+                    sys.stderr.write("Your index is an integer. Trying to return an item using the flattened grid coordinates.\n")
+                    return self.flat_indices[index]
+                else:
+                    sys.stderr.write("Returning None")
+                    return
+            
 
 class VirtualZipFile:
 
