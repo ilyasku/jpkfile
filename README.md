@@ -21,6 +21,11 @@ That's it. You should now be able to import jpkfile anywhere on your system.
 
 You can have a look at the `read_data_from_jpk_archive.py` file, or, if you have jupyter/ipython notebook installed, at the `read_data_from_jpk_archive.ipynb` file in the examples folder. Those examples show you first steps how to use the jpkfile module.
 
+# Documentation
+
+The module is documented using sphinx. You can find a built version at [readthedocs.io](http://jpkfile.readthedocs.io/en/latest/index.html), and also download it as PDF or HTML from there.   
+Alternatively, you can build it yourself locally. The source files include a `docs` folder, which contains all the contents for the documentation. It requires sphinx (I tested only versions 1.3.5 and 1.4.6) and the sphinx_rtd_theme to build.
+
 # License 
 
 The MIT License (MIT)
