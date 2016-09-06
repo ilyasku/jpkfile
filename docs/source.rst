@@ -19,8 +19,17 @@ JPKSegment
 JPKMap
 ------
 
-Functions and attributes
-------------------------
+.. autoclass:: jpkfile.JPKMap
+   :members: read_files, get_single_pixel, flat_indices, parameters
+
+
+Helper functions, attributes and classes
+----------------------------------------
 
 .. automodule:: jpkfile
    :members: parse_header_file, extract_data, determine_conversions_automatically, DATA_TYPES, ARCHIVE_TYPES, debug
+
+.. autoclass:: jpkfile._VirtualZipFile
+   :members: parent_zip, list_of_filenames, prefix
+
+.. autoclass:: jpkfile._JPKFileForJPKMap

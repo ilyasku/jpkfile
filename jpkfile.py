@@ -486,21 +486,26 @@ class JPKMap:
     of multiple 'pixels', each of which is a single force recording at one position.
     This makes maps a collection of recordings. To get the single pixels to work in 
     a similar way as the JPKFile objects and to make the whole module more modular (!?) ,
-    I created a class based on JPKFile called JPKFileForJPKMap, which requires a 
-    VirtualZipFile object instead of the path to a zip file. This makes the whole 
-    concept a bit harder to follow, but it makes the pixels behave as JPKFile objects.
-    This class is not yet outfitted with many helpful functions to retrieve or analyse 
-    data of the map. The problem is, I don't really know what is useful and what isn't,
-    since I never worked with maps. If you want a feature added, feel free to send me
-    a message or open an issue on github or implement it yourself and send a pull request.
+    I created a class based on `JPKFile` called :py:class:`~jpkfile._JPKFileForJPKMap`, which 
+    requires a :py:class:`~jpkfile._VirtualZipFile` object instead of the path to a zip file. 
+    This makes the whole concept a bit harder to follow, but it makes the pixels 
+    behave as JPKFile objects. This class is not yet outfitted with many helpful 
+    functions to retrieve or analyse data of the map. The problem is, I don't really
+    know what is useful and what isn't, since I never worked with maps. If you want a 
+    feature added, feel free to send me a message or open an issue on github or implement 
+    it yourself and send a pull request.
+
+    :param fname: Path to force map (zip archive, usually ending on '.jpk-force-map').
+    :type fname: str
     """
     def __init__(self, fname):
         """Constructor"""
         self._zip = ZipFile(fname)
             
         self.num_indices = 0
+        #: Dictionary containing JPKFile instances, one per pixel, indexed with flat indices.
         self.flat_indices = {}
-
+        #: Dictionary holding parameters stored in top level header file.
         self.parameters = {}
 
         self.has_shared_header = False
@@ -554,13 +559,18 @@ class JPKMap:
 
         for i in index_lists_of_filenames.keys():
 
-            virtual_zip = VirtualZipFile(self._zip, index_lists_of_filenames[i], "index/"+str(i)+"/")
-            new_JPKFile = JPKFileForJPKMap(virtual_zip, self.has_shared_header, self.shared_parameters)
+            virtual_zip = _VirtualZipFile(self._zip, index_lists_of_filenames[i], "index/"+str(i)+"/")
+            new_JPKFile = _JPKFileForJPKMap(virtual_zip, self.has_shared_header, self.shared_parameters)
 
             self.flat_indices[i] = new_JPKFile
                     
 
     def get_single_pixel(self, index):
+        """
+        Returns JPKFile instance of a single pixel.
+
+        :param index: Integer for flat indices or tuple/list of two integers for grid coordinates pointing to desired pixel.
+        """
         pattern_type = self.parameters['force-scan-map']['position-pattern']['type']
         
         if pattern_type == 'grid-position-pattern':
@@ -583,19 +593,54 @@ class JPKMap:
                     return
             
 
-class VirtualZipFile:
+class _VirtualZipFile:
+    """
+    THIS CLASS SHOULD NEVER BE USED DIRECTLY. IT IS USED INDIRECTLY VIA `JPKMap`.
+    *Virtual* ZipFile class, to make the functionality of the real ZipFile class 
+    available for a subfolder of real zip archives. I implemented this to be able
+    to use the familiar JPKFile class for each pixel of a force map. This way,
+    only few things have to be adjusted in JPKFileForJPKMap, which inherits
+    JPKFile, to make every pixel available as a JPKFile instance.
 
+    :param parent_zip: ZipFile instance holding the subfolder that is to be governed by this _VirtualZipFile.
+    :type parent_zip: ZipFile
+    :param excerpt_list_of_filenames: List of filenames (strings) containing only files of the subfolder; path has to be relative as if looking from within the subfolder.
+    :param prefix: Path prefix, i.e., path to the subfoler. This is used to construct the complete path to each file for the real ZipFile instance.
+    :type prefix: str
+    """
     def __init__(self, parent_zip, excerpt_list_of_filenames, prefix):
-
+        
+        #: (Pointer to) Real ZipFile instance, containing this _VirtualZipFile's folder.
         self.parent_zip = parent_zip
+
+        #: List of filenames (strings) containing only files of the subfolder; 
+        #: Paths have to be relative as if looking from within the subfolder.
+        #: For example, if your complete zip archive (see files in `parent_zip`)
+        #: has a folder called 'A', and it contains a file named 'bla.txt',
+        #: its path will be 'A/bla.txt' in the real ZipFile. In a
+        #: `_VirtualZipFile` supposed to govern the contents of folder 'A',
+        #: the path has to be only 'bla.txt', however.
         self.list_of_filenames = excerpt_list_of_filenames
+
+        #: Prefix to the folder governed by this _VirtualZipFile.
+        #: Referring to the example above, this needs to be 'A/'.
+        #: It will be used to pass the complete path to the `parent_zip`.
         self.prefix = prefix
 
     def open(self, fname):
         return self.parent_zip.open(self.prefix + fname)
 
-class JPKFileForJPKMap(JPKFile):
+class _JPKFileForJPKMap(JPKFile):
+    """
+    THIS CLASS SHOULD NEVER BE USED DIRECTLY. IT IS USED INDIRECTLY VIA `JPKMap`.
+    This class is derived from JPKFile; its purpose is to make the JPKFile class,
+    which is designed to provide a user interface to data of a single measurement
+    or recording, available for use with JPKMap (force maps) which is a 
+    collection of multiple recordings.
 
+    :param virtual_zip: (Pointer to) _VirtualZipFile for the subdirectory.
+    :param has_shared_header: `True` if parent `JPKMap` has a shared header, `False` otherwise.
+    :param shared_parameters: `None` if no shared header present, a dictionary containing parameters read from shared header otherwise."""
     def __init__(self, virtual_zip, has_shared_header, shared_parameters):
 
         self._zip = virtual_zip
