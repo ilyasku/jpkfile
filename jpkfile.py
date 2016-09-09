@@ -159,10 +159,10 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
                                     conversion_parameters = self.segments[segment].parameters['channel'][channel_label]['conversion-set']
 
                             if not encoder_parameters:
-                                sys.stderr.write("WARNING! Did not find encoder parameters!\n")
+                                sys.stderr.write("WARNING! Did not find encoder parameters for channel %s!\n" % split[3][:-4])
 
                             if not conversion_parameters:
-                                sys.stderr.write("WARNING! Did not find conversion parameters!\n")
+                                sys.stderr.write("WARNING! Did not find conversion parameters for channel %s!\n"  % split[3][:-4])
                         
                         else:
                             if debug:
@@ -184,10 +184,10 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
                                     conversion_parameters = shared_parameters['conversion-set']
 
                             if not encoder_parameters:
-                                sys.stderr.write("WARNING! Did not find encoder parameters!\n")
+                                sys.stderr.write("WARNING! Did not find encoder parameters for channel %s!\n" % split[3][:-4])
 
                             if not conversion_parameters:
-                                sys.stderr.write("WARNING! Did not find conversion parameters!\n")
+                                sys.stderr.write("WARNING! Did not find conversion parameters for channel %s!\n" % split[3][:-4])
                             
                         num_points = int(self.segments[segment].parameters['force-segment-header']['num-points'])
                             
