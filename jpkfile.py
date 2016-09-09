@@ -124,6 +124,11 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
                         #self.data['t'] = np.linspace(0.0,float(self.segments[segment].parameters['force-segment-header']['duration']), int(self.segments[segment].parameters['force-segment-header']['num-points']))
                         self.segments[segment].data['t'] = np.arange(0.0,float(self.segments[segment].parameters['force-segment-header']['duration']), float(self.segments[segment].parameters['force-segment-header']['duration'])/float(self.segments[segment].parameters['force-segment-header']['num-points']))
                     
+                        if self.has_shared_header:
+                            links = []
+                            find_links_in_local_parameters(links, self.segments[segment].parameters, self.shared_parameters.keys(), [])
+                            replace_links(links, self.segments[segment].parameters, self.shared_parameters)
+
                     # .dat is the extension for data files.
                     elif len(split) == 4 and split[3][-4:] == ".dat":
 
@@ -765,7 +770,46 @@ def parse_header_file(content):
     
     return header_dict
 
+def find_links_in_local_parameters(list_of_all_links, parameter_subset, link_keys, chain):
 
+    for key in parameter_subset:
+        copy_chain = chain[:]
+        copy_chain.append(key)
+        if key in link_keys and key!="date":
+            list_of_all_links.append(copy_chain)
+        else:
+            if isinstance(parameter_subset[key],dict):
+                find_links_in_local_parameters(list_of_all_links, parameter_subset[key],\
+                                               link_keys, copy_chain)
+                        
+def replace_links(links, local_parameters, shared_parameters):
+    for chain in links:
+        d = local_parameters
+        for key in chain[:-1]:
+            d = d[key]
+        if debug:
+            print(("keys_before = ", d.keys()))
+        index = d.pop(chain[-1])['*']
+        #d.update(shared_parameters[chain[-1]][index])
+        merge(d,shared_parameters[chain[-1]][index])
+        if debug:
+            print(("keys_shared = ", shared_parameters[chain[-1]][index].keys()))
+            print(("keys_after = ", d.keys()))
+
+
+## Took this function from stackoverflow's user andrew cooke at thread 
+# http://stackoverflow.com/questions/7204805/dictionaries-of-dictionaries-merge .
+def merge(a, b, chain=[]):
+    for key in b:
+        if key in a:
+            if isinstance(a[key], dict) and isinstance(b[key], dict):
+                merge(a[key],b[key], chain+[str(key)])
+            elif a[key] == b[key]:
+                pass
+            else:
+                raise Exception("Conflict at %s" % '.'.join(chain + [str(key)]))
+        else:
+            a[key] = b[key]
 
 ## NOT IN USE! MAYBE A STUPID IDEA ANYHOW ... 
 # :todo: decide whether to throw this out or make something useful out of it.
