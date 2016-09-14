@@ -325,12 +325,13 @@ class JPKSegment:
         dtypes = []
         shape = self.data[channels[0]][0].shape
         units = {}
+
         for c in channels:
             if decode:
                 d,unit = self.get_decoded_data(c)
             
             else:
-                d,unit = (self.data[c][0],'digital')
+                d,unit = (self.data[c][0],'digital',0)
 
             if d.shape[0] != shape[0]:
                 sys.stderr.write("ERROR! Number of points in data channel '%s' does not match expected number of %i\n" % (c,shape[0]))
@@ -338,6 +339,7 @@ class JPKSegment:
             _data[c] = d
             dtypes.append((c,d.dtype))
             units[c] = unit
+
         A = np.zeros(shape, dtype = dtypes)
         for c in channels:
             A[c] = _data[c]
@@ -708,7 +710,11 @@ def determine_conversions_automatically(conversion_set_dictionary):
     # go from first conversion (`raw_name`) to last (first item in `conversions`)
     list_of_defined_conversions = conversion_set_dictionary['conversions']['list'].split()
 
+    
     chain_complete = False
+    if conversions[0] == raw_name:
+        chain_complete = True
+        conversions = []
     while not chain_complete:
         key = conversions[-1]
         previous_conversion = conversion_set_dictionary['conversion'][key]['base-calibration-slot']
