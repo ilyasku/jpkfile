@@ -139,36 +139,51 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
                         if debug:
                             print segment, channel_label
 
+                        ## removed the following block: not required
+                        # anymore now that I replace links with copies.
+                        '''
                         shared = False
                         if self.has_shared_header:
                             if self.segments[segment].parameters['channel'][channel_label].keys().count('lcd-info'):
                                 shared = True
-
-                        #if self.archive_type == 'force':
-                        if not shared:
-
-                            if debug:
-                                print "NOT SHARED" 
+                        '''
 
 
+                        #if not shared:
+
+                        if debug:
+                            print "NOT SHARED" 
+
+                        #try: # if no shared header was present, this should work
+                        if not self.has_shared_header:
                             dtype = self.segments[segment].parameters['channel'][channel_label]['data']['type']
+                        #except: # otherwise, the chain of keywords is a bit different:
+                        else:
+                            dtype = self.segments[segment].parameters['channel'][channel_label]['type']
 
-                            encoder_parameters = None
+                        encoder_parameters = None
+                        if not self.has_shared_header:
                             if self.segments[segment].parameters['channel'][channel_label].keys().count('data'):
                                 if self.segments[segment].parameters['channel'][channel_label]['data'].keys().count('encoder'):
                                     encoder_parameters = self.segments[segment].parameters['channel'][channel_label]['data']['encoder']
+                        else:
+                            if self.segments[segment].parameters['channel'][channel_label].keys().count('encoder'):
+                                encoder_parameters = self.segments[segment].parameters['channel'][channel_label]['encoder']
 
-                            conversion_parameters = None
-                            if self.segments[segment].parameters['channel'][channel_label].keys().count('conversion-set'):
-                                if self.segments[segment].parameters['channel'][channel_label]['conversion-set'].keys().count('conversion'):
-                                    conversion_parameters = self.segments[segment].parameters['channel'][channel_label]['conversion-set']
+                        conversion_parameters = None
+                        if self.segments[segment].parameters['channel'][channel_label].keys().count('conversion-set'):
+                            if self.segments[segment].parameters['channel'][channel_label]['conversion-set'].keys().count('conversion'):
+                                conversion_parameters = self.segments[segment].parameters['channel'][channel_label]['conversion-set']
 
-                            if not encoder_parameters:
-                                sys.stderr.write("WARNING! Did not find encoder parameters for channel %s!\n" % split[3][:-4])
+                        if not encoder_parameters:
+                            sys.stderr.write("WARNING! Did not find encoder parameters for channel %s!\n" % split[3][:-4])
 
-                            if not conversion_parameters:
-                                sys.stderr.write("WARNING! Did not find conversion parameters for channel %s!\n"  % split[3][:-4])
-                        
+                        if not conversion_parameters:
+                            sys.stderr.write("WARNING! Did not find conversion parameters for channel %s!\n"  % split[3][:-4])
+
+                        ## removed the following block: not required
+                        # anymore now that I replace links with copies.
+                        '''
                         else:
                             if debug:
                                 print "SHARED"
@@ -193,6 +208,7 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
 
                             if not conversion_parameters:
                                 sys.stderr.write("WARNING! Did not find conversion parameters for channel %s!\n" % split[3][:-4])
+                        '''
                             
                         num_points = int(self.segments[segment].parameters['force-segment-header']['num-points'])
                             
