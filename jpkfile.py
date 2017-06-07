@@ -1,17 +1,22 @@
-"""This is the jpkfile module. It reads content of data archives created with devices by JPK Instruments."""
+"""This is the jpkfile module. 
+It reads content of data archives created with devices by JPK Instruments."""
 
 
 from struct import unpack
 from zipfile import ZipFile
 from dateutil import parser
 import sys
+import logging
 import numpy as np
 
 #: Dictionary assigning item length (in .dat files) and struckt.unpack abbreviation
 #: to the keys used in header files (.properties).
-DATA_TYPES = {'short':(2,'h'),'short-data':(2,'h'), 'unsignedshort':(2,'H'),
-              'integer-data':(4,'i'), 'signedinteger':(4,'i'),
-              'float-data':(4,'f')}
+DATA_TYPES = {'short': (2, 'h'),
+              'short-data': (2, 'h'),
+              'unsignedshort': (2, 'H'),
+              'integer-data': (4, 'i'),
+              'signedinteger': (4, 'i'),
+              'float-data': (4, 'f')}
 
 # NOT COMPLETE, CURRENTLY NOT USED!
 # Idea: Chain of conversions for different channels to fall back to
@@ -19,30 +24,90 @@ DATA_TYPES = {'short':(2,'h'),'short-data':(2,'h'), 'unsignedshort':(2,'H'),
 #       if no conversion is manually defined in 
 #       function JPKSegment.get_decoded_data.
 DEFAULT_CONVERSION_CHAIN = {'height': ('nominal',),
-                            'vDeflection' : ('distance','force'),
-                            'hDeflection' : (),
-                            'strainGaugeHeight' : (),
-                            'error':(),
-                            'xSignal1':()}
+                            'vDeflection': ('distance', 'force'),
+                            'hDeflection': (),
+                            'strainGaugeHeight': (),
+                            'error': (),
+                            'xSignal1': ()}
 
 #: Dictionary assigning archive type as specified in header files
 #: to file extension suffix (e.g. jpk-force, jpk-nt-force).
-ARCHIVE_TYPES = {"simple-force-scan-series-header":'force',
+ARCHIVE_TYPES = {"simple-force-scan-series-header": 'force',
                  "nt-force-scan-series-header": 'nt-force'}
 
 #: Set this to `True` in source file to enable debugging output.
 debug = False
 
+
+def is_segment_header(split):
+    return len(split) == 3 and split[2] == "segment-header.properties"
+
+
+def read_segment_header(self, segment, fname):
+    header_f = self._zip.open(fname)
+    header_content = header_f.readlines()
+    segment.parameters = parse_header_file(header_content)
+    t_end = float(segment
+                  .parameters['force-segment-header']['duration'])
+    t_step = t_end / float(segment
+                           .parameters['force-segment-header']['num-points'])
+    segment.data['t'] = np.arange(0.0, t_end, t_step)                    
+    if self.has_shared_header:
+        links = []
+        find_links_in_local_parameters(links,
+                                       segment.parameters,
+                                       self.shared_parameters.keys(), [])
+        replace_links(links, segment.parameters,
+                      self.shared_parameters)
+
+        
+def is_segment_data(split):
+    return len(split) == 4 and split[3][-4:] == ".dat"
+
+
+def read_segment_data(self, segment_number, segment, split, fname):
+    channel_label = split[3][:-4]
+    data_f = self._zip.open(fname)
+    content = data_f.read()
+    if debug:
+        print segment_number, channel_label
+    # if no shared header was present, this should work
+    if not self.has_shared_header:
+        dtype = segment.parameters['channel'][channel_label]['data']['type']
+    # otherwise, the chain of keywords is a bit different:
+    else:
+        dtype = segment.parameters['channel'][channel_label]['type']
+    encoder_parameters = None
+    if not self.has_shared_header:
+        if segment.parameters['channel'][channel_label].keys().count('data'):
+            if segment.parameters['channel'][channel_label]['data'].keys().count('encoder'):
+                encoder_parameters = segment.parameters['channel'][channel_label]['data']['encoder']
+    else:
+        if segment.parameters['channel'][channel_label].keys().count('encoder'):
+            encoder_parameters = segment.parameters['channel'][channel_label]['encoder']
+
+    conversion_parameters = None
+    if segment.parameters['channel'][channel_label].keys().count('conversion-set'):
+        if segment.parameters['channel'][channel_label]['conversion-set'].keys().count('conversion'):
+            conversion_parameters = segment.parameters['channel'][channel_label]['conversion-set']
+    if not encoder_parameters:
+        logging.warning("Did not find encoder parameters for channel %s!", split[3][:-4])
+    if not conversion_parameters:
+        logging.warning("Did not find conversion parameters for channel %s!", split[3][:-4])
+    num_points = int(segment.parameters['force-segment-header']['num-points'])
+
+    data = extract_data(content, dtype, num_points)
+    segment.data[channel_label] = (data, {'encoder_parameters': encoder_parameters,
+                                          'conversion_parameters': conversion_parameters})
+
+    
 class JPKFile:
     """Class to unzip a JPK archive and handle access to its headers and data.
 
     :param fname: Filename of archive to read data from.
     :type fname: str"""
-    
-
-    def __init__(self,fname):        
+    def __init__(self, fname):        
         """Initializes JPKFile object."""
-
         self._zip = ZipFile(fname)
         self.data = None
         #: Dictionary containing parameters read from the top level 
@@ -65,10 +130,9 @@ class JPKFile:
 
     def read_files(self, list_of_filenames):
         """Crawls through list of files in archive and processes them automatically
-by name and extension. It populates :py:attr:`parameters` and :py:attr:`segments` with content. For different file types present in JPK archives, 
-have a look at the :doc:`structure of JPK archives <structure>`."""
-
-
+        by name and extension. It populates :py:attr:`parameters` and :py:attr:`segments` 
+        with content. For different file types present in JPK archives, 
+        have a look at the :doc:`structure of JPK archives <structure>`."""
         # top header should also be present and the first file in the filelist.
         top_header = list_of_filenames.pop(list_of_filenames.index('header.properties'))
         top_header_f = self._zip.open(top_header)
@@ -76,23 +140,18 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
         
         # parse content of top header file to self.parameters.
         self.parameters.update(parse_header_file(top_header_content))
-
-        # read archive type from header parameters (self.archive_type unused so far ...)
-        #self.archive_type = ARCHIVE_TYPES[self.parameters['force-scan-series']['header']['type']]
-
         # if shared header is present ...
         if list_of_filenames.count("shared-data/header.properties"):
             # ... set this to True,
             self.has_shared_header = True
             self.shared_parameters = {}
             # and remove it from list of files.
-            shared_header = list_of_filenames.pop(list_of_filenames.index("shared-data/header.properties"))
+            shared_header = list_of_filenames.pop(
+                list_of_filenames.index("shared-data/header.properties"))
             shared_header_f = self._zip.open(shared_header)
             shared_header_content = shared_header_f.readlines()
             # Parse header content to dictionary.
             self.shared_parameters.update(parse_header_file(shared_header_content))
-
-
         # The remaining files should be structured in segments.
         # The loop is checking for every file in which segment folder it is, and 
         # whether it's a segment header or data file.
@@ -100,128 +159,30 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
         # and added to the self.segments dictionary.
         # The JPKSegment is then populated by contents of the segment's
         # header and data files.
-        for fname in list_of_filenames:#for zip_f in self._zip.filelist[1:]:
-            #fname = zip_f.filename
-
+        segment = None
+        for fname in list_of_filenames:
             split = fname.split("/")
-
             if split[0] == "segments":
-                if len(split)<3:
-                    pass
-                else:
-                    segment = int(split[1]) # `split[1]` should be the segment's number.
-
-                    if segment>self.num_segments-1:
-                        new_JPKSegment = JPKSegment(self.has_shared_header, self.shared_parameters)
-                        new_JPKSegment.index = segment
-                        self.segments[segment] = new_JPKSegment
-                        self.num_segments += 1
-                        
-                    if len(split) == 3 and split[2] == "segment-header.properties":
-                        header_f = self._zip.open(fname)
-                        header_content = header_f.readlines()
-                        self.segments[segment].parameters = parse_header_file(header_content)
-                        #self.data['t'] = np.linspace(0.0,float(self.segments[segment].parameters['force-segment-header']['duration']), int(self.segments[segment].parameters['force-segment-header']['num-points']))
-                        self.segments[segment].data['t'] = np.arange(0.0,float(self.segments[segment].parameters['force-segment-header']['duration']), float(self.segments[segment].parameters['force-segment-header']['duration'])/float(self.segments[segment].parameters['force-segment-header']['num-points']))
-                    
-                        if self.has_shared_header:
-                            links = []
-                            find_links_in_local_parameters(links, self.segments[segment].parameters, self.shared_parameters.keys(), [])
-                            replace_links(links, self.segments[segment].parameters, self.shared_parameters)
-
-                    # .dat is the extension for data files.
-                    elif len(split) == 4 and split[3][-4:] == ".dat":
-
-                        channel_label = split[3][:-4]
-                        data_f = self._zip.open(fname)
-                        content = data_f.read()
-
-                        if debug:
-                            print segment, channel_label
-
-                        ## removed the following block: not required
-                        # anymore now that I replace links with copies.
-                        '''
-                        shared = False
-                        if self.has_shared_header:
-                            if self.segments[segment].parameters['channel'][channel_label].keys().count('lcd-info'):
-                                shared = True
-                        '''
-
-
-                        #if not shared:
-
-                        if debug:
-                            print "NOT SHARED" 
-
-                        #try: # if no shared header was present, this should work
-                        if not self.has_shared_header:
-                            dtype = self.segments[segment].parameters['channel'][channel_label]['data']['type']
-                        #except: # otherwise, the chain of keywords is a bit different:
-                        else:
-                            dtype = self.segments[segment].parameters['channel'][channel_label]['type']
-
-                        encoder_parameters = None
-                        if not self.has_shared_header:
-                            if self.segments[segment].parameters['channel'][channel_label].keys().count('data'):
-                                if self.segments[segment].parameters['channel'][channel_label]['data'].keys().count('encoder'):
-                                    encoder_parameters = self.segments[segment].parameters['channel'][channel_label]['data']['encoder']
-                        else:
-                            if self.segments[segment].parameters['channel'][channel_label].keys().count('encoder'):
-                                encoder_parameters = self.segments[segment].parameters['channel'][channel_label]['encoder']
-
-                        conversion_parameters = None
-                        if self.segments[segment].parameters['channel'][channel_label].keys().count('conversion-set'):
-                            if self.segments[segment].parameters['channel'][channel_label]['conversion-set'].keys().count('conversion'):
-                                conversion_parameters = self.segments[segment].parameters['channel'][channel_label]['conversion-set']
-
-                        if not encoder_parameters:
-                            sys.stderr.write("WARNING! Did not find encoder parameters for channel %s!\n" % split[3][:-4])
-
-                        if not conversion_parameters:
-                            sys.stderr.write("WARNING! Did not find conversion parameters for channel %s!\n"  % split[3][:-4])
-
-                        ## removed the following block: not required
-                        # anymore now that I replace links with copies.
-                        '''
-                        else:
-                            if debug:
-                                print "SHARED"
-
-                            shared_parameters_index = self.segments[segment].parameters['channel'][channel_label]['lcd-info']['*']
-                            shared_parameters = self.shared_parameters['lcd-info'][shared_parameters_index]
-
-                            dtype = shared_parameters['type']
-                            
-
-                            encoder_parameters = None
-                            if shared_parameters.keys().count('encoder'):
-                                encoder_parameters = shared_parameters['encoder']
-                                
-                            conversion_parameters = None
-                            if shared_parameters.keys().count('conversion-set'):
-                                if shared_parameters['conversion-set'].keys().count('conversion'):
-                                    conversion_parameters = shared_parameters['conversion-set']
-
-                            if not encoder_parameters:
-                                sys.stderr.write("WARNING! Did not find encoder parameters for channel %s!\n" % split[3][:-4])
-
-                            if not conversion_parameters:
-                                sys.stderr.write("WARNING! Did not find conversion parameters for channel %s!\n" % split[3][:-4])
-                        '''
-                            
-                        num_points = int(self.segments[segment].parameters['force-segment-header']['num-points'])
-                            
-                        data = extract_data(content, dtype, num_points)
-                        self.segments[segment].data[channel_label] = (data , {'encoder_parameters': encoder_parameters, 'conversion_parameters': conversion_parameters})
-                                                    
-            
-
+                if len(split) < 3:
+                    continue                
+                segment_number = int(split[1])  # `split[1]` should be the segment's number.                
+                if segment_number > self.num_segments - 1:
+                    new_JPKSegment = JPKSegment(self.has_shared_header, self.shared_parameters)
+                    new_JPKSegment.index = segment_number
+                    segment = new_JPKSegment
+                    self.segments[segment_number] = segment
+                    self.num_segments += 1                        
+                if is_segment_header(split):
+                    read_segment_header(self, segment, fname)
+                # .dat is the extension for data files.
+                elif is_segment_data(split):
+                    read_segment_data(self, segment_number, segment, split, fname)                                                                
             else:
-                sys.stderr.write("ERROR! Encountered new folder '%s'.\nDo not know how to handle that." % split[0])
-                sys.exit(1)
+                msg = "ERROR! Encountered new folder '%s'.\n" % split[0]
+                msg += "Do not know how to handle that." 
+                raise RuntimeError(msg)
             
-    def get_array(self, channels = [], decode = True):
+    def get_array(self, channels=[], decode=True):
         """
         Returns channel data from all segments in a numpy array; in addition, reads physical 
         units as specified by header files.
@@ -240,7 +201,7 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
             for c in channels:
                 if not self.segments[i].data.keys().count(c):
                     present_in_all_segments = False
-                    sys.stderr.write("WARNING: requested channel %s not present in segment %i\n" % (c, i))
+                    logging.warning("requested channel %s not present in segment %i.", c, i)
                     break
             
         
@@ -254,15 +215,17 @@ have a look at the :doc:`structure of JPK archives <structure>`."""
                     # concatenates data of segment `i` to array `data`
                     data = np.concatenate((data,d))
                 else:
-                    msg = "ERROR in JPKFile.get_array!\nCould not concatenate data of all segments: units not matching\n"
-                    sys.stderr.write(msg)
-                    sys.exit(1)
+                    msg = "ERROR in JPKFile.get_array!\nCould not concatenate"
+                    msg += "data of all segments: units not matching\n"
+                    raise RuntimeError(msg)
             return data, units
         else:
-            sys.stderr.write("I recommend extracting data of segments separately by using JPKFile.segments[i].get_array(channels = [...]).")
+            msg = "I recommend extracting data of segments separately by using"
+            msg += " JPKFile.segments[i].get_array(channels = [...])."
+            logging.warning(msg)
             return None, None
 
-    def get_info(self, issue = 'general'):
+    def get_info(self, issue='general'):
         """
         Request a string on a certain issue.  
         Currently only one `issue` keyword is possible: 'segments'. This returns a 
@@ -380,22 +343,19 @@ class JPKSegment:
 
                 unit = encoder_parameters['scaling']['unit']['unit']
             else:
-                sys.stderr.write("ERROR! Can only handle converters of type 'offsetmultiplier' so far.")
-                sys.exit(1)
+                msg = "ERROR! Can only handle converters of type 'offsetmultiplier' so far."
+                raise RuntimeError(msg)
 
         else:
-            sys.stderr.write("WARNING! No encoder parameters found for channel '%s'.\n" % channel)
-
-
-
+            logging.warning("No encoder parameters found for channel '%s'.\n", channel)
 
         # If conversions_to_be_applied is a string, it should be either 'default' or 'auto'.
         # I recommend always using auto, unless you encounter any problems due to conversion.
         if type(conversions_to_be_applied) == str:
-            if conversions_to_be_applied == 'default':
-                conversions_to_be_applied = DEAULT_CONVERSION_CHAIN[channel]
+            if conversions_to_be_applied == 'default':                
+                conversions_to_be_applied = DEFAULT_CONVERSION_CHAIN[channel]
                 if len(conversions_to_be_applied) == 0:
-                    msg = """WARNING! You request decoding of a channel for which no
+                    msg = """You request decoding of a channel for which no
 default conversion scheme is present. You can apply 
 a temporary conversion scheme by passing a list or tuple
 of conversion key words in the parameter 
@@ -410,12 +370,17 @@ Also, it would be awesome if you could let me know what
 default conversion scheme works for you, so I could 
 probably include it in the latest version of jpkfile.
 Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
-                    sys.stderr.write(msg)
+                    logging.warning(msg)
             elif conversions_to_be_applied == 'auto':
-                conversions_to_be_applied = determine_conversions_automatically(self.data[channel][1]['conversion_parameters'])
+                conversions_to_be_applied = determine_conversions_automatically(
+                    self.data[channel][1]['conversion_parameters'])
             else:
-                sys.stderr.write("WARNING! Unknown string '%s' for function JPKFile.get_decoded_data's parameter conversions_to_be_applied.\nValid strings: 'auto' and 'default'.\nWill now use 'auto'.\n")
-                conversions_to_be_applied = determine_conversions_automatically(self.data[channel][1]['conversion_parameters'])
+                msg = "Unknown string '%s' for" % conversions_to_be_applied
+                msg += " function JPKFile.get_decoded_data's parameter conversions_to_be_applied.\n"
+                msg += "Valid strings: 'auto' and 'default'.\nWill now use 'auto'."
+                logging.warning(msg)
+                conversions_to_be_applied = determine_conversions_automatically(
+                    self.data[channel][1]['conversion_parameters'])
 
         if conversion_parameters:
 
@@ -423,18 +388,16 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
             for c in conversions_to_be_applied:
 
                 if not conversion_keys.count(c):
-                    sys.stderr.write("ERROR! Requested conversion '%s' can't be applied,\nno parameters for '%s' found in jpk header." % (c,c))
-                    sys.exit(1)
-                    return
+                    msg = "Requested conversion '%s' can't be applied,\nno parameters for '%s' found in jpk header." % (c,c)
+                    raise RuntimeError(msg)
                 else:
                     if conversion_parameters[c]['defined'] == 'false':
-                        sys.stderr.write("ERROR! Requested conversion '%s' can't be applied!\nThis conversion was specified as not defined\nin jpk header file." % c)
-                        sys.exit(1)
-                        return
-
+                        msg = "Requested conversion '%s' can't be applied!\n" % c
+                        msg += "This conversion was specified as not defined\nin jpk header file." 
+                        raise RuntimeError(msg)
 
             if debug:
-                print("="*70)
+                print("=" * 70)
                 print("APPLYING CONVERSIONS")
             for c in conversions_to_be_applied:
                 if debug:
@@ -449,14 +412,14 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
                     unit = conversion_parameters[c]['scaling']['unit']['unit']
 
                 else:
-                    sys.stderr.write("ERROR! Can only handle converters of type 'offsetmultiplier' so far.")
-                    sys.exit(1)
+                    msg = "ERROR! Can only handle converters of type 'offsetmultiplier' so far."
+                    raise RuntimeError(msg)
         else:
-            sys.stderr.write("WARNING! No conversion parameters found for channel '%s'.\n" % channel)
+            logging.warning("No conversion parameters found for channel '%s'.", channel)
                         
-        return raw,unit
+        return raw, unit
 
-    def get_info(self, issue = 'general'):
+    def get_info(self, issue='general'):
         """
         Request information (string) on some issue.
         This is basically just a more user-friendly assignment of
@@ -601,18 +564,22 @@ class JPKMap:
                 i = int(self.parameters['force-scan-map']['position-pattern']['grid']['ilength'])
                 j = int(self.parameters['force-scan-map']['position-pattern']['grid']['jlength'])
                 if i > index[0] and j > index[1]:
-                    return self.flat_indices[i*index[0]+index[1]]
+                    return self.flat_indices[i * index[0] + index[1]]
                 else:
-                    sys.stderr.write("ERROR! Index is [%i,%i], but max range is limited to [%i,%i].\n" % (index[0],index[1],i-1,j-1))
-                    return
+                    msg = "Index is [%i,%i], but max range is limited to [%i,%i].\n" % (index[0],index[1],i-1,j-1)
+                    raise RuntimeError(msg)
 
             else:
-                sys.stderr.write("WARNING! Detected grid pattern for this map, you should\nspecify index as a list/tuple of two values, i-index and j-index.\n")
+                msg = "Detected grid pattern for this map, you should\n"
+                msg += "specify index as a list/tuple of two values, i-index and j-index."
+                logging.warning(msg)
                 if type(index) == int:
-                    sys.stderr.write("Your index is an integer. Trying to return an item using the flattened grid coordinates.\n")
+                    msg = "Your index is an integer. "
+                    msg += "Trying to return an item using the flattened grid coordinates."
+                    logging.warning(msg)
                     return self.flat_indices[index]
                 else:
-                    sys.stderr.write("Returning None")
+                    logging.warning("Returning None")
                     return
             
 
@@ -755,12 +722,14 @@ def extract_data(content, dtype, num_points):
     if len(data) == num_points:
         return np.array(data)
     else:
-        sys.stderror.write("ERROR! Number of extracted data points is %i, and does not match the number of present data points %i as read from the segment's header file." % (len(data), num_points))
-        sys.exit(1)
+        msg = "ERROR! Number of extracted data points is %i," % len(data)
+        msg += " and does not match the number of present data points %i" % num_points
+        msg += " as read from the segment's header file."
+        raise RuntimeError(msg)
 
+    
 def parse_header_file(content):
     header_dict = {}
-
     start = 0
     
     if content[start][:2] == "##":
