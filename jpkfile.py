@@ -5,7 +5,6 @@ It reads content of data archives created with devices by JPK Instruments."""
 from struct import unpack
 from zipfile import ZipFile
 from dateutil import parser
-import sys
 import logging
 import numpy as np
 
