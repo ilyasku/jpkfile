@@ -188,32 +188,22 @@ class JPKFile:
         units as specified by header files.
 
         :param channels: List of channels (channel names, i.e. strings) of which to return data.
-        :param decode: Determines whether data is to be decoded, i.e. transformed according to transformation parameters defined in header files.
+        :param decode: Determines whether data is to be decoded, i.e. transformed according to 
+        transformation parameters defined in header files.
         :type decode: bool
-        :return: Tuple with two items: (1) Numpy array with labeled columns, one column per requested channel; (2) dictionary assigning units to channels."""
-        
-
-        ## FIRST: need to check whether requested channels are present in all segments.
-        # Didn't know before this was possible, but apparently channels are not necc.
-        # the same in all segments.
-        present_in_all_segments = True
-        for i in range(self.num_segments):
-            for c in channels:
-                if not self.segments[i].data.keys().count(c):
-                    present_in_all_segments = False
-                    logging.warning("requested channel %s not present in segment %i.", c, i)
-                    break
-            
+        :return: Tuple with two items: (1) Numpy array with labeled columns, one column 
+        per requested channel; (2) dictionary assigning units to channels."""
+        present_in_all_segments = check_requested_channels_in_all_segments(channels, self)            
         
         if present_in_all_segments:
             # reads data and units of first segment
             data, units = self.segments[0].get_array(channels, decode)
-            for i in range(1,len(self.segments)):
+            for i in range(1, len(self.segments)):
                 s = self.segments[i]
                 d, u = s.get_array(channels, decode)
                 if u == units:
                     # concatenates data of segment `i` to array `data`
-                    data = np.concatenate((data,d))
+                    data = np.concatenate((data, d))
                 else:
                     msg = "ERROR in JPKFile.get_array!\nCould not concatenate"
                     msg += "data of all segments: units not matching\n"
@@ -242,23 +232,34 @@ class JPKFile:
             s = s + "-------\t----\t----------\t--------\n"            
             for i in range(len(self.segments)):
                 s = s + str(i) + "\t" + self.segments[i].get_info('type') + "\t" + \
-                    self.segments[i].get_info('num-points') + '\t\t' + self.segments[i].get_info('duration')+ '\n'
-            s = s + "=" * 70 + "\n"
-            
+                    self.segments[i].get_info('num-points') \
+                    + '\t\t' + self.segments[i].get_info('duration') + '\n'
+            s = s + "=" * 70 + "\n"            
         return s
+
+    
+def check_requested_channels_in_all_segments(channels, self):
+    present_in_all_segments = True
+    for i in range(self.num_segments):
+        for c in channels:
+            if not self.segments[i].data.keys().count(c):
+                present_in_all_segments = False
+                logging.warning("requested channel %s not present in segment %i.", c, i)
+                break
+    return present_in_all_segments
                 
-
         
-
 class JPKSegment:
     """
     Class to hold data and parameters of a single segment in a JPK archive.
     It is usually created internally when handling a JPK archive with the JPKFile class.
     
-    :param parent_has_shared_header: True, if JPKFile finds shared header in JPK archive, False otherwise.
+    :param parent_has_shared_header: True, if JPKFile finds shared header in JPK archive, 
+     False otherwise.
     :type parent_has_shared_header: bool
-    :param shared_properties: If parent_has_shared_header is True, this parameter needs to hold the dictionary containing the header's contents. Otherwise it is None."""
-    def __init__(self, parent_has_shared_header = False, shared_properties = None):
+    :param shared_properties: If parent_has_shared_header is True, this parameter needs to 
+    hold the dictionary containing the header's contents. Otherwise it is None."""
+    def __init__(self, parent_has_shared_header=False, shared_properties=None):
         """Constructor."""
         #: Dictionary holding parameters read from segment header.
         self.parameters = {}
@@ -269,20 +270,21 @@ class JPKSegment:
         self.parent_has_shared_header = parent_has_shared_header
         self.shared_properties = shared_properties
 
-
-    def get_time(self, offset = 0):
+    def get_time(self, offset=0):
         """Returns time-stamps, increased by possible offset."""
-        return self.data['t']+offset
+        return self.data['t'] + offset
 
-    def get_array(self, channels = [], decode = True):
+    def get_array(self, channels=[], decode=True):
         """
         Constructs a numpy array containing data of given channels. If `decode` is True (default),
         data is converted following conversions defined in segment's header (or shared header).
 
         :param channels: List of channels (channel names, i.e. strings) of which to return data.
-        :param decode: Determines whether data is to be decoded, i.e. transformed according to transformation parameters defined in header files.
+        :param decode: Determines whether data is to be decoded, i.e. transformed according 
+         to transformation parameters defined in header files.
         :type decode: bool
-        :return: Tuple with two items: (1) Numpy array with labeled columns, one column per requested channel; (2) dictionary assigning units to channels.
+        :return: Tuple with two items: (1) Numpy array with labeled columns, one column per 
+         requested channel; (2) dictionary assigning units to channels.
         """
         _data = {}
         dtypes = []
@@ -291,26 +293,22 @@ class JPKSegment:
 
         for c in channels:
             if decode:
-                d,unit = self.get_decoded_data(c)
-            
+                d, unit = self.get_decoded_data(c)            
             else:
-                d,unit = (self.data[c][0],'digital',0)
-
+                d, unit = (self.data[c][0], 'digital', 0)
             if d.shape[0] != shape[0]:
-                sys.stderr.write("ERROR! Number of points in data channel '%s' does not match expected number of %i\n" % (c,shape[0]))
-                sys.exit(1)
+                msg = "ERROR! Number of points in data channel '%s'" % c
+                msg += "does not match expected number of %i\n" % shape[0]
+                raise RuntimeError(msg)
             _data[c] = d
-            dtypes.append((c,d.dtype))
+            dtypes.append((c, d.dtype))
             units[c] = unit
-
-        A = np.zeros(shape, dtype = dtypes)
+        A = np.zeros(shape, dtype=dtypes)
         for c in channels:
             A[c] = _data[c]
-        return A, units
-        
+        return A, units        
 
-
-    def get_decoded_data(self,channel, conversions_to_be_applied = 'auto'):
+    def get_decoded_data(self, channel, conversions_to_be_applied='auto'):
         """
         Get decoded data of one channel. 'decoded' here means the raw, digital data 
         gets converted (to physical data) following certain conversion steps. These steps
@@ -323,8 +321,11 @@ class JPKSegment:
         
         :param channel: Name of channel to convert data of.
         :type channel: str
-        :param conversions_to_be_applied: Specifying what conversions to apply, see description above.
-        :return: Tuple with 2 items; (1) Single-column numpy array containing converted data; (2) Unit as read for last conversion step from header file.
+        :param conversions_to_be_applied: Specifying what conversions to apply, 
+         see description above.
+        :return: Tuple with 2 items; 
+         (1) Single-column numpy array containing converted data; 
+         (2) Unit as read for last conversion step from header file.
         """
         unit = 'digital'
 
@@ -456,12 +457,15 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
         if not issue == 'general':
             return d[issue]
         else:
-            s = "="*70 + "\n"
-            s = s +" " *10 + "GENERAL INFORMATION ON SEGMENT WITH INDEX "+str(self.index) + "\n"
-            s = s + "="*70 + "\n"
-            s = s + "Type of segment:\n"+ " " * 4 + self.get_info('type') + "\n"
-            s = s + "List of channels:\n"+ " " * 4 + self.get_info('channels') + "\n"
-            s = s + "Each of those channels should contain " + self.get_info('num-points') + " data points,\n" +" " * 4 + "recorded in "+ self.get_info('duration') + " seconds (OR WHAT IS UNIT OF TIME?)" + "\n"
+            s = "=" * 70 + "\n"
+            s = s + " " * 10 + "GENERAL INFORMATION ON SEGMENT WITH INDEX "
+            s = s + str(self.index) + "\n"
+            s = s + "=" * 70 + "\n"
+            s = s + "Type of segment:\n" + " " * 4 + self.get_info('type') + "\n"
+            s = s + "List of channels:\n" + " " * 4 + self.get_info('channels') + "\n"
+            s = s + "Each of those channels should contain " + self.get_info('num-points')
+            s = s + " data points,\n" + " " * 4 + "recorded in " + self.get_info('duration')
+            s = s + " seconds (OR WHAT IS UNIT OF TIME?)" + "\n"
             s = s + "=" * 70 + "\n"
             return s
             
@@ -501,11 +505,13 @@ class JPKMap:
 
     def read_files(self):
         """Crawls through list of files in archive and processes them automatically
-        by name and extension. It populates :py:attr:`parameters` and :py:attr:`flat_indices` with content. For different file types present in JPK archives, 
+        by name and extension. It populates :py:attr:`parameters` and :py:attr:`flat_indices` 
+        with content. For different file types present in JPK archives, 
         have a look at the :doc:`structure of JPK archives <structure>`."""
         list_of_filenames = [f.filename for f in self._zip.filelist]
 
-        top_header_f = self._zip.open(list_of_filenames.pop(list_of_filenames.index('header.properties')))
+        top_header_f = self._zip.open(list_of_filenames.pop(
+            list_of_filenames.index('header.properties')))
         top_header_content = top_header_f.readlines()
 
         # parse content of top header file to self.parameters.
@@ -516,7 +522,8 @@ class JPKMap:
             self.has_shared_header = True
             self.shared_parameters = {}
             # and remove it from list of files.
-            shared_header = list_of_filenames.pop(list_of_filenames.index("shared-data/header.properties"))
+            shared_header = list_of_filenames.pop(
+                list_of_filenames.index("shared-data/header.properties"))
             shared_header_f = self._zip.open(shared_header)
             shared_header_content = shared_header_f.readlines()
             # Parse header content to dictionary.
@@ -529,12 +536,12 @@ class JPKMap:
             split = fname.split("/")
 
             if split[0] == "index":
-                if len(split)<3:
+                if len(split) < 3:
                     pass
                 else:
                     index = int(split[1])
 
-                    if index > self.num_indices-1:
+                    if index > self.num_indices - 1:
                         
                         index_lists_of_filenames[index] = []
                         self.num_indices += 1
@@ -544,18 +551,18 @@ class JPKMap:
                         index_lists_of_filenames[index].append(_fname)
 
         for i in index_lists_of_filenames.keys():
-
-            virtual_zip = _VirtualZipFile(self._zip, index_lists_of_filenames[i], "index/"+str(i)+"/")
-            new_JPKFile = _JPKFileForJPKMap(virtual_zip, self.has_shared_header, self.shared_parameters)
-
+            virtual_zip = _VirtualZipFile(
+                self._zip, index_lists_of_filenames[i], "index/" + str(i) + "/")
+            new_JPKFile = _JPKFileForJPKMap(
+                virtual_zip, self.has_shared_header, self.shared_parameters)
             self.flat_indices[i] = new_JPKFile
                     
-
     def get_single_pixel(self, index):
         """
         Returns JPKFile instance of a single pixel.
 
-        :param index: Integer for flat indices or tuple/list of two integers for grid coordinates pointing to desired pixel.
+        :param index: Integer for flat indices or tuple/list of two 
+         integers for grid coordinates pointing to desired pixel.
         """
         pattern_type = self.parameters['force-scan-map']['position-pattern']['type']
         
@@ -592,10 +599,13 @@ class _VirtualZipFile:
     only few things have to be adjusted in JPKFileForJPKMap, which inherits
     JPKFile, to make every pixel available as a JPKFile instance.
 
-    :param parent_zip: ZipFile instance holding the subfolder that is to be governed by this _VirtualZipFile.
+    :param parent_zip: ZipFile instance holding the subfolder that is to 
+     be governed by this _VirtualZipFile.
     :type parent_zip: ZipFile
-    :param excerpt_list_of_filenames: List of filenames (strings) containing only files of the subfolder; path has to be relative as if looking from within the subfolder.
-    :param prefix: Path prefix, i.e., path to the subfoler. This is used to construct the complete path to each file for the real ZipFile instance.
+    :param excerpt_list_of_filenames: List of filenames (strings) containing 
+     only files of the subfolder; path has to be relative as if looking from within the subfolder.
+    :param prefix: Path prefix, i.e., path to the subfoler. This is used 
+     to construct the complete path to each file for the real ZipFile instance.
     :type prefix: str
     """
     def __init__(self, parent_zip, excerpt_list_of_filenames, prefix):
@@ -620,6 +630,7 @@ class _VirtualZipFile:
     def open(self, fname):
         return self.parent_zip.open(self.prefix + fname)
 
+    
 class _JPKFileForJPKMap(JPKFile):
     """
     THIS CLASS SHOULD NEVER BE USED DIRECTLY. IT IS USED INDIRECTLY VIA `JPKMap`.
@@ -630,7 +641,8 @@ class _JPKFileForJPKMap(JPKFile):
 
     :param virtual_zip: (Pointer to) _VirtualZipFile for the subdirectory.
     :param has_shared_header: `True` if parent `JPKMap` has a shared header, `False` otherwise.
-    :param shared_parameters: `None` if no shared header present, a dictionary containing parameters read from shared header otherwise."""
+    :param shared_parameters: `None` if no shared header present, 
+     a dictionary containing parameters read from shared header otherwise."""
     def __init__(self, virtual_zip, has_shared_header, shared_parameters):
 
         self._zip = virtual_zip
@@ -654,12 +666,14 @@ class _JPKFileForJPKMap(JPKFile):
         
         self.index = None
 
+        
 def determine_conversions_automatically(conversion_set_dictionary):
     """
     Takes all parameters on how to convert some channel's data read from a header file 
     to determine the chain of conversion steps automatically.
     
-    :param conversion_set_dictionary: Dictionary of 'conversion-set' parameters as parsed from header file with function `parse_header_file`.
+    :param conversion_set_dictionary: Dictionary of 'conversion-set' 
+     parameters as parsed from header file with function `parse_header_file`.
     :type conversion_set_dictionary: dict
     :return: List of conversion keywords."""
 
@@ -675,9 +689,7 @@ def determine_conversions_automatically(conversion_set_dictionary):
 
     # This lits should contain keywords of all conversions necessary to 
     # go from first conversion (`raw_name`) to last (first item in `conversions`)
-    list_of_defined_conversions = conversion_set_dictionary['conversions']['list'].split()
-
-    
+    list_of_defined_conversions = conversion_set_dictionary['conversions']['list'].split()    
     chain_complete = False
     if conversions[0] == raw_name:
         chain_complete = True
@@ -717,7 +729,7 @@ def extract_data(content, dtype, num_points):
     data = []
     
     for i in range(int(len(content) / point_length)):
-        data.append(unpack('!'+type_code, content[i * point_length:(i+1) * point_length]))
+        data.append(unpack('!' + type_code, content[i * point_length:(i + 1) * point_length]))
 
     if len(data) == num_points:
         return np.array(data)
@@ -745,8 +757,8 @@ def parse_header_file(content):
     header_dict['date'] = t
 
 
-    for line in content[start+1:]:
-        key,value = line.split("=")
+    for line in content[start + 1:]:
+        key, value = line.split("=")
         value = value.strip()
         split_key = key.split(".")
         d = header_dict
@@ -761,18 +773,20 @@ def parse_header_file(content):
     
     return header_dict
 
+
 def find_links_in_local_parameters(list_of_all_links, parameter_subset, link_keys, chain):
 
     for key in parameter_subset:
         copy_chain = chain[:]
         copy_chain.append(key)
-        if key in link_keys and key!="date":
+        if key in link_keys and key != "date":
             list_of_all_links.append(copy_chain)
         else:
-            if isinstance(parameter_subset[key],dict):
-                find_links_in_local_parameters(list_of_all_links, parameter_subset[key],\
+            if isinstance(parameter_subset[key], dict):
+                find_links_in_local_parameters(list_of_all_links, parameter_subset[key],
                                                link_keys, copy_chain)
-                        
+
+                
 def replace_links(links, local_parameters, shared_parameters):
     for chain in links:
         d = local_parameters
@@ -781,8 +795,7 @@ def replace_links(links, local_parameters, shared_parameters):
         if debug:
             print(("keys_before = ", d.keys()))
         index = d.pop(chain[-1])['*']
-        #d.update(shared_parameters[chain[-1]][index])
-        merge(d,shared_parameters[chain[-1]][index])
+        merge(d, shared_parameters[chain[-1]][index])
         if debug:
             print(("keys_shared = ", shared_parameters[chain[-1]][index].keys()))
             print(("keys_after = ", d.keys()))
@@ -794,75 +807,10 @@ def merge(a, b, chain=[]):
     for key in b:
         if key in a:
             if isinstance(a[key], dict) and isinstance(b[key], dict):
-                merge(a[key],b[key], chain+[str(key)])
+                merge(a[key], b[key], chain + [str(key)])
             elif a[key] == b[key]:
                 pass
             else:
                 raise Exception("Conflict at %s" % '.'.join(chain + [str(key)]))
         else:
             a[key] = b[key]
-
-## NOT IN USE! MAYBE A STUPID IDEA ANYHOW ... 
-# :todo: decide whether to throw this out or make something useful out of it.
-def print_table(content, col_labels = [], row_labels = [], 
-                min_col_space = 0, col_sep_character = '|', row_sep_character = '-', 
-                header_sep_character = "=", max_cell_width = 30):
-    """
-    To print some information (e.g. in case JPKFile.get_info( issue = 'segments' ))
-    in a nicely formatted table.
-    """
-
-    ## check size
-    n_rows = len(content)
-    n_cols = len(content[0])
-    for row in content:
-        if len(row)!=n_cols:
-            msg = "ERROR in print_table! Number columns per row not identical."
-            sys.stderr.write(msg)
-            sys.exit(1)
-
-
-    ## compute number of characters per column/row
-    # and format content to match max_cell_width 
-    # if necessary
-    characters_row = np.ones(n_rows, np.int)
-    characters_col = np.zeros(n_cols, np.int)
-    formatted_content = []
-
-    for r in range(n_rows):
-        formatted_row = []
-        size_row = characters_row[r]
-        for c in range(n_cols):
-            entry = []
-            size_col = characters_col[c]
-            entry = content[r][c]
-            lines = entry.split('\n')
-            for l in lines:
-                length = len(l)
-                if length > max_cell_width:
-                    size_col = max_cell_width
-                    for i in range(int(length/max_cell_width)):
-                        entry.append(l[i*max_cell_width:(i+1)*max_cell_width])
-                    if length % max_cell_width:
-                        entry.append(l[(i+1)*max_cell_width:])
-                else:
-                    entry.append(l)
-                    if l > size_col:
-                        size_col = l
-            characters_col[c] = size_col
-            if len(entry)>size_row:
-                size_row = len(entry)
-            formatted_row.append(entry)
-        formatted_content.append(formatted_row)
-        characters_row[r] = size_row
-        
-        ## need to take into account size of the labels/headers
-
-        # ... nothing here yet ... 
-
-
-        ## compose string
-        content_string = ""
-            
-
-        return content_string
