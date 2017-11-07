@@ -1,12 +1,15 @@
 """This is the jpkfile module. 
 It reads content of data archives created with devices by JPK Instruments."""
-
-
 from struct import unpack
 from zipfile import ZipFile
 from dateutil import parser
 import logging
 import numpy as np
+
+formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+log_handler = logging.StreamHandler()
+log_handler.setLevel(logging.WARNING)
+log_handler.setFormatter(formatter)
 
 #: Dictionary assigning item length (in .dat files) and struckt.unpack abbreviation
 #: to the keys used in header files (.properties).
@@ -45,6 +48,7 @@ def is_segment_header(split):
 def read_segment_header(self, segment, fname):
     header_f = self._zip.open(fname)
     header_content = header_f.readlines()
+    header_content = decode_binary_strings(header_content)
     segment.parameters = parse_header_file(header_content)
     t_end = float(segment
                   .parameters['force-segment-header']['duration'])
@@ -69,7 +73,7 @@ def read_segment_data(self, segment_number, segment, split, fname):
     data_f = self._zip.open(fname)
     content = data_f.read()
     if debug:
-        print segment_number, channel_label
+        print(segment_number, channel_label)
     # if no shared header was present, this should work
     if not self.has_shared_header:
         dtype = segment.parameters['channel'][channel_label]['data']['type']
@@ -78,16 +82,16 @@ def read_segment_data(self, segment_number, segment, split, fname):
         dtype = segment.parameters['channel'][channel_label]['type']
     encoder_parameters = None
     if not self.has_shared_header:
-        if segment.parameters['channel'][channel_label].keys().count('data'):
-            if segment.parameters['channel'][channel_label]['data'].keys().count('encoder'):
+        if 'data' in segment.parameters['channel'][channel_label]:
+            if 'encoder' in segment.parameters['channel'][channel_label]['data']:
                 encoder_parameters = segment.parameters['channel'][channel_label]['data']['encoder']
     else:
-        if segment.parameters['channel'][channel_label].keys().count('encoder'):
+        if 'encoder' in segment.parameters['channel'][channel_label]:
             encoder_parameters = segment.parameters['channel'][channel_label]['encoder']
 
     conversion_parameters = None
-    if segment.parameters['channel'][channel_label].keys().count('conversion-set'):
-        if segment.parameters['channel'][channel_label]['conversion-set'].keys().count('conversion'):
+    if 'conversion-set' in segment.parameters['channel'][channel_label]:
+        if 'conversion' in segment.parameters['channel'][channel_label]['conversion-set']:
             conversion_parameters = segment.parameters['channel'][channel_label]['conversion-set']
     if not encoder_parameters:
         logging.warning("Did not find encoder parameters for channel %s!", split[3][:-4])
@@ -136,6 +140,7 @@ class JPKFile:
         top_header = list_of_filenames.pop(list_of_filenames.index('header.properties'))
         top_header_f = self._zip.open(top_header)
         top_header_content = top_header_f.readlines()
+        top_header_content = decode_binary_strings(top_header_content)
         
         # parse content of top header file to self.parameters.
         self.parameters.update(parse_header_file(top_header_content))
@@ -149,6 +154,7 @@ class JPKFile:
                 list_of_filenames.index("shared-data/header.properties"))
             shared_header_f = self._zip.open(shared_header)
             shared_header_content = shared_header_f.readlines()
+            shared_header_content = decode_binary_strings(shared_header_content)
             # Parse header content to dictionary.
             self.shared_parameters.update(parse_header_file(shared_header_content))
         # The remaining files should be structured in segments.
@@ -177,9 +183,11 @@ class JPKFile:
                 elif is_segment_data(split):
                     read_segment_data(self, segment_number, segment, split, fname)                                                                
             else:
-                msg = "ERROR! Encountered new folder '%s'.\n" % split[0]
-                msg += "Do not know how to handle that." 
-                raise RuntimeError(msg)
+                logger = logging.getLogger("JPKFile.read_files")
+                logger.addHandler(log_handler)
+                msg = "Encountered new folder '%s'.\n" % split[0]
+                msg += "Do not know how to handle that."
+                logger.warning(msg)
             
     def get_array(self, channels=[], decode=True):
         """
@@ -241,13 +249,13 @@ def check_requested_channels_in_all_segments(channels, self):
     present_in_all_segments = True
     for i in range(self.num_segments):
         for c in channels:
-            if not self.segments[i].data.keys().count(c):
+            if c not in self.segments[i].data:
                 present_in_all_segments = False
                 logging.warning("requested channel %s not present in segment %i.", c, i)
                 break
     return present_in_all_segments
-                
-        
+
+
 class JPKSegment:
     """
     Class to hold data and parameters of a single segment in a JPK archive.
@@ -387,7 +395,7 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
             conversion_keys = conversion_parameters.keys()
             for c in conversions_to_be_applied:
 
-                if not conversion_keys.count(c):
+                if c not in conversion_keys:
                     msg = "Requested conversion '%s' can't be applied,\nno parameters for '%s' found in jpk header." % (c,c)
                     raise RuntimeError(msg)
                 else:
@@ -442,7 +450,7 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
                  'duration': self.parameters['force-segment-header']['duration'],
                  'type': self.parameters['force-segment-header']['settings']['style']}
         else:
-            if self.parameters['force-segment-header'].keys().count('force-segment-header-info'):
+            if 'force-segment-header-info' in self.parameters['force-segment-header']:
                 d = {'channels': self.parameters['channels']['list'],
                      'num-points': self.parameters['force-segment-header']['num-points'],
                      'duration': self.parameters['force-segment-header']['duration']}
@@ -512,6 +520,7 @@ class JPKMap:
         top_header_f = self._zip.open(list_of_filenames.pop(
             list_of_filenames.index('header.properties')))
         top_header_content = top_header_f.readlines()
+        top_header_content = decode_binary_strings(top_header_content)
 
         # parse content of top header file to self.parameters.
         self.parameters.update(parse_header_file(top_header_content))
@@ -525,6 +534,7 @@ class JPKMap:
                 list_of_filenames.index("shared-data/header.properties"))
             shared_header_f = self._zip.open(shared_header)
             shared_header_content = shared_header_f.readlines()
+            shared_header_content = decode_binary_strings(shared_header_content)
             # Parse header content to dictionary.
             self.shared_parameters.update(parse_header_file(shared_header_content))
 
@@ -687,8 +697,7 @@ def determine_conversions_automatically(conversion_set_dictionary):
     raw_name = conversion_set_dictionary['conversions']['base']
 
     # This lits should contain keywords of all conversions necessary to 
-    # go from first conversion (`raw_name`) to last (first item in `conversions`)
-    list_of_defined_conversions = conversion_set_dictionary['conversions']['list'].split()    
+    # go from first conversion (`raw_name`) to last (first item in `conversions`)    
     chain_complete = False
     if conversions[0] == raw_name:
         chain_complete = True
@@ -738,32 +747,31 @@ def extract_data(content, dtype, num_points):
         msg += " as read from the segment's header file."
         raise RuntimeError(msg)
 
-    
+
 def parse_header_file(content):
     header_dict = {}
     start = 0
-    
-    if content[start][:2] == "##":
+
+    if str(content[start][:2]) == "##":
         start = 1
-    
+
     try:
         from pytz import utc
         fmt = '%Y-%m-%d %H:%M:%S %Z%z'
-        t = utc.localize(parser.parse(content[start][1:], dayfirst=True)).strftime(fmt)
+        t = utc.localize(parser.parse(str(content[start][1:]), dayfirst=True)).strftime(fmt)
     except:
         t = parser.parse(content[start][1:])
 
     header_dict['date'] = t
 
-
     for line in content[start + 1:]:
-        key, value = line.split("=")
+        key, value = str(line).split('=')
         value = value.strip()
         split_key = key.split(".")
         d = header_dict
         if len(split_key) > 1:
             for s in split_key[:-1]:
-                if d.keys().count(s):
+                if s in d:
                     d = d[s]
                 else:
                     d[s] = {}
@@ -785,7 +793,7 @@ def find_links_in_local_parameters(list_of_all_links, parameter_subset, link_key
                 find_links_in_local_parameters(list_of_all_links, parameter_subset[key],
                                                link_keys, copy_chain)
 
-                
+
 def replace_links(links, local_parameters, shared_parameters):
     for chain in links:
         d = local_parameters
@@ -800,7 +808,7 @@ def replace_links(links, local_parameters, shared_parameters):
             print(("keys_after = ", d.keys()))
 
 
-## Took this function from stackoverflow's user andrew cooke at thread 
+# Took this function from stackoverflow's user andrew cooke at thread 
 # http://stackoverflow.com/questions/7204805/dictionaries-of-dictionaries-merge .
 def merge(a, b, chain=[]):
     for key in b:
@@ -813,3 +821,7 @@ def merge(a, b, chain=[]):
                 raise Exception("Conflict at %s" % '.'.join(chain + [str(key)]))
         else:
             a[key] = b[key]
+
+
+def decode_binary_strings(list_of_binary_strings):
+    return [b.decode("utf-8") for b in list_of_binary_strings]
