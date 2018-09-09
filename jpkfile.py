@@ -54,7 +54,7 @@ def read_segment_header(self, segment, fname):
                   .parameters['force-segment-header']['duration'])
     t_step = t_end / float(segment
                            .parameters['force-segment-header']['num-points'])
-    segment.data['t'] = np.arange(0.0, t_end, t_step)                    
+    segment.data['t'] = (np.arange(0.0, t_end, t_step), {'unit': 's'})
     if self.has_shared_header:
         links = []
         find_links_in_local_parameters(links,
@@ -279,7 +279,7 @@ class JPKSegment:
 
     def get_time(self, offset=0):
         """Returns time-stamps, increased by possible offset."""
-        return self.data['t'] + offset
+        return self.data['t'][0] + offset
 
     def get_array(self, channels=[], decode=True):
         """
@@ -299,10 +299,15 @@ class JPKSegment:
         units = {}
 
         for c in channels:
-            if decode:
+            if c == 't':
+                d = self.data['t'][0]
+                unit = 's'
+            elif decode:
                 d, unit = self.get_decoded_data(c)            
             else:
                 d, unit = (self.data[c][0], 'digital', 0)
+            print(d.shape)
+            print(shape)
             if d.shape[0] != shape[0]:
                 msg = "ERROR! Number of points in data channel '%s'" % c
                 msg += "does not match expected number of %i\n" % shape[0]
