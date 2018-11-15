@@ -8,7 +8,7 @@ USAGE:
 from setuptools import setup
 
 setup(name='jpkfile',
-      version='1.0',
+      version='1.2',
       description='Package to handle reading of files recorded with JPK instruments.',
       url='',
       author='Ilyas Kuhlemann',
@@ -19,5 +19,6 @@ setup(name='jpkfile',
           "gui_scripts": []
       },
       install_requires=['numpy',
-                        'dateutil'],
+                        'python-dateutil'],
+      packages=['jpkfile'],
       zip_safe=False)
