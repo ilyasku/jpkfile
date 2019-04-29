@@ -196,10 +196,11 @@ class JPKFile:
 
         :param channels: List of channels (channel names, i.e. strings) of which to return data.
         :param decode: Determines whether data is to be decoded, i.e. transformed according to 
-        transformation parameters defined in header files.
+                       transformation parameters defined in header files.
         :type decode: bool
         :return: Tuple with two items: (1) Numpy array with labeled columns, one column 
-        per requested channel; (2) dictionary assigning units to channels."""
+                 per requested channel; (2) dictionary assigning units to channels.
+        """
         present_in_all_segments = check_requested_channels_in_all_segments(channels, self)            
         
         if present_in_all_segments:
@@ -262,10 +263,12 @@ class JPKSegment:
     It is usually created internally when handling a JPK archive with the JPKFile class.
     
     :param parent_has_shared_header: True, if JPKFile finds shared header in JPK archive, 
-     False otherwise.
+                                     False otherwise.
     :type parent_has_shared_header: bool
     :param shared_properties: If parent_has_shared_header is True, this parameter needs to 
-    hold the dictionary containing the header's contents. Otherwise it is None."""
+                              hold the dictionary containing the header's contents. Otherwise 
+                              it is None.
+    """
     def __init__(self, parent_has_shared_header=False, shared_properties=None):
         """Constructor."""
         #: Dictionary holding parameters read from segment header.
@@ -438,6 +441,7 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
         This is basically just a more user-friendly assignment of
         parameters of interest to single keywords.
         For the `issue` parameter the following strings are valid:
+
          * 'general' (default)
          * 'channels'
          * 'num-points'
@@ -614,12 +618,13 @@ class _VirtualZipFile:
     JPKFile, to make every pixel available as a JPKFile instance.
 
     :param parent_zip: ZipFile instance holding the subfolder that is to 
-     be governed by this _VirtualZipFile.
+                       be governed by this _VirtualZipFile.
     :type parent_zip: ZipFile
     :param excerpt_list_of_filenames: List of filenames (strings) containing 
-     only files of the subfolder; path has to be relative as if looking from within the subfolder.
+                                      only files of the subfolder; path has to be relative 
+                                      as if looking from within the subfolder.
     :param prefix: Path prefix, i.e., path to the subfoler. This is used 
-     to construct the complete path to each file for the real ZipFile instance.
+                   to construct the complete path to each file for the real ZipFile instance.
     :type prefix: str
     """
     def __init__(self, parent_zip, excerpt_list_of_filenames, prefix):

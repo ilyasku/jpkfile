@@ -8,7 +8,7 @@ USAGE:
 from setuptools import setup
 
 setup(name='jpkfile',
-      version='1.2',
+      version='1.3',
       description='Package to handle reading of files recorded with JPK instruments.',
       url='',
       author='Ilyas Kuhlemann',
