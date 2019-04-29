@@ -15,14 +15,15 @@ Install
 
 Currently jpkfile has only one relevant python file *jpkfile.py*, which makes "installing" straight-forward: you simply need to add the folder in which the .py file lies to your python path.  
 One way to do so is to add a *.pth* file containing the path to the folder as text to your user's *site-packages* folder:
- * On my Ubuntu 14.04 machine, the site-packages folder is at `/home/user-name/.local/lib/python2.7/site-packages`
- * If yours isn't there, you can figure it out by starting python in the command line and typing
+
+* On my Ubuntu 14.04 machine, the site-packages folder is at `/home/user-name/.local/lib/python2.7/site-packages`
+* If yours isn't there, you can figure it out by starting python in the command line and typing
 
     >>> import site
     >>> site.USER_SITE
 
- * Open a new file in a text editor, enter the path to the folder containing the jpkfile module.
- * Save the file into the site-packages folder.  
+* Open a new file in a text editor, enter the path to the folder containing the jpkfile module.
+* Save the file into the site-packages folder.  
 
 That's it. You should now be able to import jpkfile anywhere on your system. I recommend you start with the files in the `examples` folder to see how to use the jpkfile module.
 
