@@ -42,14 +42,16 @@ One way to do so is to add a *.pth* file containing the path to the folder as te
 * Save the file into the site-packages folder.  
 That's it. You should now be able to import jpkfile anywhere on your system.
 
-# First Steps
+First Steps
+===========
 
-You can have a look at the `read_data_from_jpk_archive.py` file, or, if you have jupyter/ipython notebook installed, at the `read_data_from_jpk_archive.ipynb` file in the examples folder. Those examples show you first steps how to use the jpkfile module.
+You can have a look at the :code:`read_data_from_jpk_archive.py` file, or, if you have jupyter/ipython notebook installed, at the :code:`read_data_from_jpk_archive.ipynb` file in the examples folder. Those examples show you first steps how to use the jpkfile module.
 
-# Documentation
+Documentation
+=============
 
-The module is documented using sphinx. You can find a built version at [readthedocs.io](http://jpkfile.readthedocs.io/en/latest/index.html), and also download it as PDF or HTML from there.   
-Alternatively, you can build it yourself locally. The source files include a `docs` folder, which contains all the contents for the documentation. It requires sphinx (I tested only version 2.0.1) and the sphinx_rtd_theme to build.
+The module is documented using sphinx. You can find a built version at `readthedocs.io <http://jpkfile.readthedocs.io/en/latest/index.html>`_, and also download it as PDF or HTML from there.   
+Alternatively, you can build it yourself locally. The source files include a :code:`docs` folder, which contains all the contents for the documentation. It requires sphinx (I tested only version 2.0.1) and the sphinx_rtd_theme to build.
 
 # License 
 
