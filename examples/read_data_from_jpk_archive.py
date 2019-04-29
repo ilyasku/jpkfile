@@ -1,24 +1,22 @@
 # coding: utf-8
 
-# ich war hier mal drin (bg)
-
 # ## Load the module
-# If you added the folder in which `jpkfile.py` is to you site-packages, you should be able to import the module.
+# If you added the folder in which `jpkfile.py` is to you site-packages,
+# you should be able to import the module.
 
 import jpkfile
 
 
 # ## Create a JPKFile object
 
-jpk = jpkfile.JPKFile("../examples/force-save-2016.06.15-13.17.08.jpk-force")
+jpk = jpkfile.JPKFile("force-save-2016.06.15-13.17.08.jpk-force")
 
 
 # ## Structure of JPKFile objects
 
 # * Data is separated in segments in jpk archives. Thus, it is separated in JPKFile objects as well. The member JPKFile.segments is a list of JPKSegment objects.
 
-jpk.segments
-
+print(jpk.segments)
 
 # * To get some basic information on the jpk archive behind the JPKFile object, you can use the JPKFile.get_info function. Note that 'segments' is currently the only working keyword here ...
 
@@ -78,7 +76,7 @@ ax.legend()
 ax.set_xlabel('height [%s]' % s0_units['height'])
 ax.set_ylabel('vDeflection [%s]' % s0_units['vDeflection'])
 
-f.show()
+plt.show()
 
 
 
