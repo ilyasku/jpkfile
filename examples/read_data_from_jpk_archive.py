@@ -1,5 +1,7 @@
 # coding: utf-8
 
+# ich war hier mal drin (bg)
+
 # ## Load the module
 # If you added the folder in which `jpkfile.py` is to you site-packages, you should be able to import the module.
 
