@@ -2,7 +2,7 @@ jpkfile
 =======
 
 jpkfile is a module for reading of data archives recorded with
-`JPK Instruments<http://www.jpk.com/>`_.  
+`JPK Instruments <http://www.jpk.com/>`_.  
 
 Install
 =======
@@ -12,7 +12,7 @@ You have the following three options to install jpkfile.
 via pip
 -------
 
-The simplest way, if you have internet access on the target device, is to install  via `pip<https://pypi.org/project/pip/>`_. In a command line type:
+The simplest way, if you have internet access on the target device, is to install  via `pip <https://pypi.org/project/pip/>`_. In a command line type:
 
 .. code::
 
@@ -21,7 +21,7 @@ The simplest way, if you have internet access on the target device, is to instal
 via source
 ----------
 
-You can also clone/download the source files from `jpkfile's project page<https://gitlab.gwdg.de/ikuhlem/jpkfile>`_. Navigate to your copy of the project folder in a command line and type:
+You can also clone/download the source files from `jpkfile's project page <https://gitlab.gwdg.de/ikuhlem/jpkfile>`_. Navigate to your copy of the project folder in a command line and type:
 
 .. code::
 
