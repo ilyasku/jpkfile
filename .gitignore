@@ -4,6 +4,7 @@
 
 # built documentation
 *_build*
+docs/built
 
 # too large folders
 
