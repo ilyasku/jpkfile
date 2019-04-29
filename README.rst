@@ -53,7 +53,8 @@ Documentation
 The module is documented using sphinx. You can find a built version at `readthedocs.io <http://jpkfile.readthedocs.io/en/latest/index.html>`_, and also download it as PDF or HTML from there.   
 Alternatively, you can build it yourself locally. The source files include a :code:`docs` folder, which contains all the contents for the documentation. It requires sphinx (I tested only version 2.0.1) and the sphinx_rtd_theme to build.
 
-# License 
+License
+=======
 
 The MIT License (MIT)
 Copyright (c) 2016 Ilyas Kuhlemann (ilyasp.ku@gmail.com)
