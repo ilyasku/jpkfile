@@ -13,19 +13,41 @@ To see how to use this module, I recommend to take a look at the files in the `e
 Install
 =======
 
-Currently jpkfile has only one relevant python file *jpkfile.py*, which makes "installing" straight-forward: you simply need to add the folder in which the .py file lies to your python path.  
+You have the following three options to install jpkfile.
+
+via pip
+-------
+
+The simplest way, if you have internet access on the target device, is to install  via `pip <https://pypi.org/project/pip/>`_. In a command line type:
+
+.. code::
+
+   $ pip install --user jpkfile
+
+via source
+----------
+
+You can also clone/download the source files from `jpkfile's project page <https://gitlab.gwdg.de/ikuhlem/jpkfile>`_. Navigate to your copy of the project folder in a command line and type:
+
+.. code::
+
+   $ python setup.py install --user
+
+add module to your :code:`PYTHONPATH`
+-------------------------------------
+
+Currently :code:`jpkfile` has only one relevant python file :code:`jpkfile.py`, which makes "installing" straight-forward: you simply need to add the folder in which the .py file lies to your python path.  
 One way to do so is to add a *.pth* file containing the path to the folder as text to your user's *site-packages* folder:
-
-* On my Ubuntu 14.04 machine, the site-packages folder is at `/home/user-name/.local/lib/python2.7/site-packages`
+* On my Ubuntu 18.04 machine, the site-packages folder is at `/home/<username>/.local/lib/python3.7/site-packages`
 * If yours isn't there, you can figure it out by starting python in the command line and typing
-
-    >>> import site
-    >>> site.USER_SITE
+  
+>>> import site
+>>> site.USER_SITE
 
 * Open a new file in a text editor, enter the path to the folder containing the jpkfile module.
-* Save the file into the site-packages folder.  
+* Save the file into the site-packages folder.
 
-That's it. You should now be able to import jpkfile anywhere on your system. I recommend you start with the files in the `examples` folder to see how to use the jpkfile module.
+That's it. You should now be able to import jpkfile anywhere on your system.
 
 
 Contents

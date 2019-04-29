@@ -39,7 +39,8 @@ One way to do so is to add a *.pth* file containing the path to the folder as te
 >>> site.USER_SITE
 
 * Open a new file in a text editor, enter the path to the folder containing the jpkfile module.
-* Save the file into the site-packages folder.  
+* Save the file into the site-packages folder.
+
 That's it. You should now be able to import jpkfile anywhere on your system.
 
 First Steps
