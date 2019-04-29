@@ -49,9 +49,17 @@ One way to do so is to add a *.pth* file containing the path to the folder as te
 
 That's it. You should now be able to import jpkfile anywhere on your system.
 
+First Steps
+===========
 
-Contents
-========
+You can have a look at the :code:`read_data_from_jpk_archive.py` file, or,
+if you have jupyter/ipython notebook installed, at the
+:code:`read_data_from_jpk_archive.ipynb` file in the examples folder.
+Those examples show you first steps how to use the jpkfile module.
+
+
+Additional Resources
+====================
 
 .. toctree::
    :titlesonly:
@@ -72,7 +80,7 @@ License
 =======
 
 The MIT License (MIT)
-Copyright (c) 2016 Ilyas Kuhlemann (ilyasp.ku@gmail.com)
+Copyright (c) 2016 Ilyas Kuhlemann 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
