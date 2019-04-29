@@ -7,10 +7,15 @@ USAGE:
 """
 from setuptools import setup
 
+with open("README.rst", 'r') as fh:
+    long_description = fh.read()
+
 setup(name='jpkfile',
-      version='1.3',
+      version='1.4',
       description='Package to handle reading of files recorded with JPK instruments.',
-      url='',
+      long_description=long_description,
+      long_description_content_type="text/x-rst",
+      url='https://gitlab.gwdg.de/ikuhlem/jpkfile',
       author='Ilyas Kuhlemann',
       author_email='ilyasp.ku@gmail.com',
       license='MIT',      
