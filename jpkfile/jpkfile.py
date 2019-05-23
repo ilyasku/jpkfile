@@ -309,8 +309,6 @@ class JPKSegment:
                 d, unit = self.get_decoded_data(c)            
             else:
                 d, unit = (self.data[c][0], 'digital', 0)
-            print(d.shape)
-            print(shape)
             if d.shape[0] != shape[0]:
                 msg = "ERROR! Number of points in data channel '%s'" % c
                 msg += "does not match expected number of %i\n" % shape[0]
