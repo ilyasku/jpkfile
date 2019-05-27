@@ -694,7 +694,7 @@ def determine_conversions_automatically(conversion_set_dictionary):
     :type conversion_set_dictionary: dict
     :return: List of conversion keywords."""
 
-    # Conversions is a list that will hold the converion keywords.
+    # Conversions is a list that will hold the conversion keywords.
     # When populating this list in the following while loop, the 
     # order of conversions needs to be reversed. The list is 
     # initiated in the following line with the last conversion step's
@@ -704,7 +704,7 @@ def determine_conversions_automatically(conversion_set_dictionary):
     # from digital back to the analogue potential in voltage).
     raw_name = conversion_set_dictionary['conversions']['base']
 
-    # This lits should contain keywords of all conversions necessary to 
+    # This list should contain keywords of all conversions necessary to 
     # go from first conversion (`raw_name`) to last (first item in `conversions`)    
     chain_complete = False
     if conversions[0] == raw_name:
