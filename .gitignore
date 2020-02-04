@@ -19,3 +19,6 @@ docs/built
 *.sdf
 *.png
 
+# local files
+.idea
+venv

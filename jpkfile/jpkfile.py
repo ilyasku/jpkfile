@@ -361,7 +361,7 @@ class JPKSegment:
                 raise RuntimeError(msg)
 
         else:
-            logging.warning("No encoder parameters found for channel '%s'.\n", channel)
+            logging.warning("No encoder parameters found for channel '%s'.", channel)
 
         # If conversions_to_be_applied is a string, it should be either 'default' or 'auto'.
         # I recommend always using auto, unless you encounter any problems due to conversion.
