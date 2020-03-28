@@ -1,15 +1,11 @@
 """This is the jpkfile module. 
 It reads content of data archives created with devices by JPK Instruments."""
+import warnings
 from struct import unpack
 from zipfile import ZipFile
 from dateutil import parser
-import logging
 import numpy as np
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-log_handler = logging.StreamHandler()
-log_handler.setLevel(logging.WARNING)
-log_handler.setFormatter(formatter)
+from pytz import utc
 
 #: Dictionary assigning item length (in .dat files) and struckt.unpack abbreviation
 #: to the keys used in header files (.properties).
@@ -46,7 +42,7 @@ def is_segment_header(split):
 
 
 def read_segment_header(self, segment, fname):
-    header_f = self._zip.open(fname)
+    header_f = self.jpk_zip.open(fname)
     header_content = header_f.readlines()
     header_content = decode_binary_strings(header_content)
     segment.parameters = parse_header_file(header_content)
@@ -70,7 +66,7 @@ def is_segment_data(split):
 
 def read_segment_data(self, segment_number, segment, split, fname):
     channel_label = split[3][:-4]
-    data_f = self._zip.open(fname)
+    data_f = self.jpk_zip.open(fname)
     content = data_f.read()
     if debug:
         print(segment_number, channel_label)
@@ -94,9 +90,9 @@ def read_segment_data(self, segment_number, segment, split, fname):
         if 'conversion' in segment.parameters['channel'][channel_label]['conversion-set']:
             conversion_parameters = segment.parameters['channel'][channel_label]['conversion-set']
     if not encoder_parameters:
-        logging.warning("Did not find encoder parameters for channel %s!", split[3][:-4])
+        warnings.warn("Did not find encoder parameters for channel %s!", split[3][:-4])
     if not conversion_parameters:
-        logging.warning("Did not find conversion parameters for channel %s!", split[3][:-4])
+        warnings.warn("Did not find conversion parameters for channel %s!", split[3][:-4])
     num_points = int(segment.parameters['force-segment-header']['num-points'])
 
     data = extract_data(content, dtype, num_points)
@@ -111,7 +107,7 @@ class JPKFile:
     :type fname: str"""
     def __init__(self, fname):        
         """Initializes JPKFile object."""
-        self._zip = ZipFile(fname)
+        self.jpk_zip = ZipFile(fname)
         self.data = None
         #: Dictionary containing parameters read from the top level 
         #: ``header.properties`` file.
@@ -127,7 +123,7 @@ class JPKFile:
         self.shared_parameters = None
 
         # create list of file names in archive (strings, not only file handles).
-        list_of_filenames = [f.filename for f in self._zip.filelist]
+        list_of_filenames = [f.filename for f in self.jpk_zip.filelist]
 
         self.read_files(list_of_filenames)
 
@@ -138,7 +134,7 @@ class JPKFile:
         have a look at the :doc:`structure of JPK archives <structure>`."""
         # top header should also be present and the first file in the filelist.
         top_header = list_of_filenames.pop(list_of_filenames.index('header.properties'))
-        top_header_f = self._zip.open(top_header)
+        top_header_f = self.jpk_zip.open(top_header)
         top_header_content = top_header_f.readlines()
         top_header_content = decode_binary_strings(top_header_content)
         
@@ -146,17 +142,7 @@ class JPKFile:
         self.parameters.update(parse_header_file(top_header_content))
         # if shared header is present ...
         if list_of_filenames.count("shared-data/header.properties"):
-            # ... set this to True,
-            self.has_shared_header = True
-            self.shared_parameters = {}
-            # and remove it from list of files.
-            shared_header = list_of_filenames.pop(
-                list_of_filenames.index("shared-data/header.properties"))
-            shared_header_f = self._zip.open(shared_header)
-            shared_header_content = shared_header_f.readlines()
-            shared_header_content = decode_binary_strings(shared_header_content)
-            # Parse header content to dictionary.
-            self.shared_parameters.update(parse_header_file(shared_header_content))
+            parse_shared_header(self, list_of_filenames)
         # The remaining files should be structured in segments.
         # The loop is checking for every file in which segment folder it is, and 
         # whether it's a segment header or data file.
@@ -172,9 +158,9 @@ class JPKFile:
                     continue                
                 segment_number = int(split[1])  # `split[1]` should be the segment's number.                
                 if segment_number > self.num_segments - 1:
-                    new_JPKSegment = JPKSegment(self.has_shared_header, self.shared_parameters)
-                    new_JPKSegment.index = segment_number
-                    segment = new_JPKSegment
+                    new_jpksegment = JPKSegment(self.has_shared_header, self.shared_parameters)
+                    new_jpksegment.index = segment_number
+                    segment = new_jpksegment
                     self.segments[segment_number] = segment
                     self.num_segments += 1                        
                 if is_segment_header(split):
@@ -183,13 +169,11 @@ class JPKFile:
                 elif is_segment_data(split):
                     read_segment_data(self, segment_number, segment, split, fname)                                                                
             else:
-                logger = logging.getLogger("JPKFile.read_files")
-                logger.addHandler(log_handler)
                 msg = "Encountered new folder '%s'.\n" % split[0]
                 msg += "Do not know how to handle that."
-                logger.warning(msg)
-            
-    def get_array(self, channels=[], decode=True):
+                warnings.warn(msg)
+
+    def get_array(self, channels=None, decode=True):
         """
         Returns channel data from all segments in a numpy array; in addition, reads physical 
         units as specified by header files.
@@ -201,7 +185,9 @@ class JPKFile:
         :return: Tuple with two items: (1) Numpy array with labeled columns, one column 
                  per requested channel; (2) dictionary assigning units to channels.
         """
-        present_in_all_segments = check_requested_channels_in_all_segments(channels, self)            
+        if channels is None:
+            channels = []
+        present_in_all_segments = check_requested_channels_in_all_segments(channels, self)
         
         if present_in_all_segments:
             # reads data and units of first segment
@@ -220,7 +206,7 @@ class JPKFile:
         else:
             msg = "I recommend extracting data of segments separately by using"
             msg += " JPKFile.segments[i].get_array(channels = [...])."
-            logging.warning(msg)
+            warnings.warn(msg)
             return None, None
 
     def get_info(self, issue='general'):
@@ -242,17 +228,35 @@ class JPKFile:
                 s = s + str(i) + "\t" + self.segments[i].get_info('type') + "\t" + \
                     self.segments[i].get_info('num-points') \
                     + '\t\t' + self.segments[i].get_info('duration') + '\n'
-            s = s + "=" * 70 + "\n"            
+            s = s + "=" * 70 + "\n"
+        else:
+            msg = "only issue implemented so far: 'segments'"
+            raise NotImplementedError(msg)
         return s
 
-    
+
+def parse_shared_header(jpk_object, list_of_filenames):
+    # ... set this to True,
+    jpk_object.has_shared_header = True
+    jpk_object.shared_parameters = {}
+    # and remove it from list of files.
+    shared_header = list_of_filenames.pop(
+        list_of_filenames.index("shared-data/header.properties")
+    )
+    shared_header_f = jpk_object.jpk_zip.open(shared_header)
+    shared_header_content = shared_header_f.readlines()
+    shared_header_content = decode_binary_strings(shared_header_content)
+    # Parse header content to dictionary.
+    jpk_object.shared_parameters.update(parse_header_file(shared_header_content))
+
+
 def check_requested_channels_in_all_segments(channels, self):
     present_in_all_segments = True
     for i in range(self.num_segments):
         for c in channels:
             if c not in self.segments[i].data:
                 present_in_all_segments = False
-                logging.warning("requested channel %s not present in segment %i.", c, i)
+                warnings.warn("requested channel %s not present in segment %i.", c, i)
                 break
     return present_in_all_segments
 
@@ -284,7 +288,7 @@ class JPKSegment:
         """Returns time-stamps, increased by possible offset."""
         return self.data['t'][0] + offset
 
-    def get_array(self, channels=[], decode=True):
+    def get_array(self, channels=None, decode=True):
         """
         Constructs a numpy array containing data of given channels. If `decode` is True (default),
         data is converted following conversions defined in segment's header (or shared header).
@@ -296,6 +300,8 @@ class JPKSegment:
         :return: Tuple with two items: (1) Numpy array with labeled columns, one column per 
          requested channel; (2) dictionary assigning units to channels.
         """
+        if channels is None:
+            channels = []
         _data = {}
         dtypes = []
         shape = self.data[channels[0]][0].shape
@@ -308,7 +314,7 @@ class JPKSegment:
             elif decode:
                 d, unit = self.get_decoded_data(c)            
             else:
-                d, unit = (self.data[c][0], 'digital', 0)
+                d, unit = (self.data[c][0], 'digital')
             if d.shape[0] != shape[0]:
                 msg = "ERROR! Number of points in data channel '%s'" % c
                 msg += "does not match expected number of %i\n" % shape[0]
@@ -316,10 +322,10 @@ class JPKSegment:
             _data[c] = d
             dtypes.append((c, d.dtype))
             units[c] = unit
-        A = np.zeros(shape, dtype=dtypes)
+        arr = np.zeros(shape, dtype=dtypes)
         for c in channels:
-            A[c] = _data[c]
-        return A, units        
+            arr[c] = _data[c]
+        return arr, units
 
     def get_decoded_data(self, channel, conversions_to_be_applied='auto'):
         """
@@ -361,7 +367,7 @@ class JPKSegment:
                 raise RuntimeError(msg)
 
         else:
-            logging.warning("No encoder parameters found for channel '%s'.", channel)
+            warnings.warn("No encoder parameters found for channel '%s'.", channel)
 
         # If conversions_to_be_applied is a string, it should be either 'default' or 'auto'.
         # I recommend always using auto, unless you encounter any problems due to conversion.
@@ -384,7 +390,7 @@ Also, it would be awesome if you could let me know what
 default conversion scheme works for you, so I could 
 probably include it in the latest version of jpkfile.
 Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
-                    logging.warning(msg)
+                    warnings.warn(msg)
             elif conversions_to_be_applied == 'auto':
                 conversions_to_be_applied = determine_conversions_automatically(
                     self.data[channel][1]['conversion_parameters'])
@@ -392,7 +398,7 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
                 msg = "Unknown string '%s' for" % conversions_to_be_applied
                 msg += " function JPKFile.get_decoded_data's parameter conversions_to_be_applied.\n"
                 msg += "Valid strings: 'auto' and 'default'.\nWill now use 'auto'."
-                logging.warning(msg)
+                warnings.warn(msg)
                 conversions_to_be_applied = determine_conversions_automatically(
                     self.data[channel][1]['conversion_parameters'])
 
@@ -402,8 +408,9 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
             for c in conversions_to_be_applied:
 
                 if c not in conversion_keys:
-                    msg = "Requested conversion '%s' can't be applied,\nno parameters for '%s' found in jpk header." % (c,c)
-                    raise RuntimeError(msg)
+                    msg = "Requested conversion '{}' can't be applied,' "
+                    msg += "\nno parameters for '{}' found in jpk header."
+                    raise RuntimeError(msg.format(c, c))
                 else:
                     if conversion_parameters[c]['defined'] == 'false':
                         msg = "Requested conversion '%s' can't be applied!\n" % c
@@ -429,7 +436,7 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
                     msg = "ERROR! Can only handle converters of type 'offsetmultiplier' so far."
                     raise RuntimeError(msg)
         else:
-            logging.warning("No conversion parameters found for channel '%s'.", channel)
+            warnings.warn("No conversion parameters found for channel '%s'.", channel)
                         
         return raw, unit
 
@@ -460,8 +467,10 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
             if 'force-segment-header-info' in self.parameters['force-segment-header']:
                 d = {'channels': self.parameters['channels']['list'],
                      'num-points': self.parameters['force-segment-header']['num-points'],
-                     'duration': self.parameters['force-segment-header']['duration']}
-                d['type'] = self.shared_properties['force-segment-header-info'][self.parameters['force-segment-header']['force-segment-header-info']['*']]['settings']['style']
+                     'duration': self.parameters['force-segment-header']['duration'], 'type':
+                         self.shared_properties['force-segment-header-info'][
+                             self.parameters['force-segment-header']['force-segment-header-info']['*']]['settings'][
+                             'style']}
             else:
                 d = {'channels': self.parameters['channels']['list'],
                      'num-points': self.parameters['force-segment-header']['num-points'],
@@ -504,7 +513,7 @@ class JPKMap:
     """
     def __init__(self, fname):
         """Constructor"""
-        self._zip = ZipFile(fname)
+        self.jpk_zip = ZipFile(fname)
             
         self.num_indices = 0
         #: Dictionary containing JPKFile instances, one per pixel, indexed with flat indices.
@@ -522,9 +531,9 @@ class JPKMap:
         by name and extension. It populates :py:attr:`parameters` and :py:attr:`flat_indices` 
         with content. For different file types present in JPK archives, 
         have a look at the :doc:`structure of JPK archives <structure>`."""
-        list_of_filenames = [f.filename for f in self._zip.filelist]
+        list_of_filenames = [f.filename for f in self.jpk_zip.filelist]
 
-        top_header_f = self._zip.open(list_of_filenames.pop(
+        top_header_f = self.jpk_zip.open(list_of_filenames.pop(
             list_of_filenames.index('header.properties')))
         top_header_content = top_header_f.readlines()
         top_header_content = decode_binary_strings(top_header_content)
@@ -533,17 +542,7 @@ class JPKMap:
         self.parameters.update(parse_header_file(top_header_content))
 
         if list_of_filenames.count("shared-data/header.properties"):
-            # ... set this to True,
-            self.has_shared_header = True
-            self.shared_parameters = {}
-            # and remove it from list of files.
-            shared_header = list_of_filenames.pop(
-                list_of_filenames.index("shared-data/header.properties"))
-            shared_header_f = self._zip.open(shared_header)
-            shared_header_content = shared_header_f.readlines()
-            shared_header_content = decode_binary_strings(shared_header_content)
-            # Parse header content to dictionary.
-            self.shared_parameters.update(parse_header_file(shared_header_content))
+            parse_shared_header(self, list_of_filenames)
 
         index_lists_of_filenames = {}
 
@@ -568,10 +567,10 @@ class JPKMap:
 
         for i in index_lists_of_filenames.keys():
             virtual_zip = _VirtualZipFile(
-                self._zip, index_lists_of_filenames[i], "index/" + str(i) + "/")
-            new_JPKFile = _JPKFileForJPKMap(
+                self.jpk_zip, index_lists_of_filenames[i], "index/" + str(i) + "/")
+            new_jpkfile = _JPKFileForJPKMap(
                 virtual_zip, self.has_shared_header, self.shared_parameters)
-            self.flat_indices[i] = new_JPKFile
+            self.flat_indices[i] = new_jpkfile
                     
     def get_single_pixel(self, index):
         """
@@ -589,20 +588,23 @@ class JPKMap:
                 if i > index[0] and j > index[1]:
                     return self.flat_indices[i * index[0] + index[1]]
                 else:
-                    msg = "Index is [%i,%i], but max range is limited to [%i,%i].\n" % (index[0],index[1],i-1,j-1)
+                    msg = "Index is [%i,%i], but max range is limited to [%i,%i].\n" % (index[0],
+                                                                                        index[1],
+                                                                                        i-1,
+                                                                                        j-1)
                     raise RuntimeError(msg)
 
             else:
                 msg = "Detected grid pattern for this map, you should\n"
                 msg += "specify index as a list/tuple of two values, i-index and j-index."
-                logging.warning(msg)
+                warnings.warn(msg)
                 if type(index) == int:
                     msg = "Your index is an integer. "
                     msg += "Trying to return an item using the flattened grid coordinates."
-                    logging.warning(msg)
+                    warnings.warn(msg)
                     return self.flat_indices[index]
                 else:
-                    logging.warning("Returning None")
+                    warnings.warn("Returning None")
                     return
             
 
@@ -662,7 +664,7 @@ class _JPKFileForJPKMap(JPKFile):
      a dictionary containing parameters read from shared header otherwise."""
     def __init__(self, virtual_zip, has_shared_header, shared_parameters):
 
-        self._zip = virtual_zip
+        self.jpk_zip = virtual_zip
         self.data = None
         #: Dictionary containing parameters read from the top level 
         #: ``header.properties`` file.
@@ -677,7 +679,7 @@ class _JPKFileForJPKMap(JPKFile):
         #: ``None`` if no shared header is present, dictionary containing parameters otherwise.
         self.shared_parameters = shared_parameters
 
-        list_of_filenames = self._zip.list_of_filenames
+        list_of_filenames = self.jpk_zip.list_of_filenames
 
         self.read_files(list_of_filenames)
         
@@ -745,7 +747,8 @@ def extract_data(content, dtype, num_points):
     data = []
     
     for i in range(int(len(content) / point_length)):
-        data.append(unpack('!' + type_code, content[i * point_length:(i + 1) * point_length]))
+        data.append(unpack('!' + type_code,
+                           content[i * point_length:(i + 1) * point_length]))
 
     if len(data) == num_points:
         return np.array(data)
@@ -764,7 +767,6 @@ def parse_header_file(content):
         start = 1
 
     try:
-        from pytz import utc
         fmt = '%Y-%m-%d %H:%M:%S %Z%z'
         t = utc.localize(parser.parse(str(content[start][1:]), dayfirst=True)).strftime(fmt)
     except:
@@ -818,7 +820,9 @@ def replace_links(links, local_parameters, shared_parameters):
 
 # Took this function from stackoverflow's user andrew cooke at thread 
 # http://stackoverflow.com/questions/7204805/dictionaries-of-dictionaries-merge .
-def merge(a, b, chain=[]):
+def merge(a, b, chain=None):
+    if chain is None:
+        chain = []
     for key in b:
         if key in a:
             if isinstance(a[key], dict) and isinstance(b[key], dict):

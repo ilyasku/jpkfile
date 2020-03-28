@@ -11,19 +11,19 @@ with open("README.rst", 'r') as fh:
     long_description = fh.read()
 
 setup(name='jpkfile',
-      version='1.4',
+      version='1.5',
       description='Package to handle reading of files recorded with JPK instruments.',
       long_description=long_description,
       long_description_content_type="text/x-rst",
       url='https://gitlab.gwdg.de/ikuhlem/jpkfile',
       author='Ilyas Kuhlemann',
       author_email='ilyasp.ku@gmail.com',
-      license='MIT',      
+      license='MIT',
       entry_points={
           "console_scripts": [],
           "gui_scripts": []
       },
       install_requires=['numpy',
-                        'python-dateutil'],
+                        'python-dateutil', 'pytz'],
       packages=['jpkfile'],
       zip_safe=False)
