@@ -90,9 +90,9 @@ def read_segment_data(self, segment_number, segment, split, fname):
         if 'conversion' in segment.parameters['channel'][channel_label]['conversion-set']:
             conversion_parameters = segment.parameters['channel'][channel_label]['conversion-set']
     if not encoder_parameters:
-        warnings.warn("Did not find encoder parameters for channel %s!", split[3][:-4])
+        warnings.warn("Did not find encoder parameters for channel {}!".format(split[3][:-4]))
     if not conversion_parameters:
-        warnings.warn("Did not find conversion parameters for channel %s!", split[3][:-4])
+        warnings.warn("Did not find conversion parameters for channel {}!".format(split[3][:-4]))
     num_points = int(segment.parameters['force-segment-header']['num-points'])
 
     data = extract_data(content, dtype, num_points)
@@ -256,7 +256,7 @@ def check_requested_channels_in_all_segments(channels, self):
         for c in channels:
             if c not in self.segments[i].data:
                 present_in_all_segments = False
-                warnings.warn("requested channel %s not present in segment %i.", c, i)
+                warnings.warn("requested channel {} not present in segment {}.".format(c, i))
                 break
     return present_in_all_segments
 
@@ -367,7 +367,7 @@ class JPKSegment:
                 raise RuntimeError(msg)
 
         else:
-            warnings.warn("No encoder parameters found for channel '%s'.", channel)
+            warnings.warn("No encoder parameters found for channel '{}'.".format(channel))
 
         # If conversions_to_be_applied is a string, it should be either 'default' or 'auto'.
         # I recommend always using auto, unless you encounter any problems due to conversion.
@@ -436,7 +436,7 @@ Just send me a mail to ilyasp.ku@gmail.com. THANKS!"""
                     msg = "ERROR! Can only handle converters of type 'offsetmultiplier' so far."
                     raise RuntimeError(msg)
         else:
-            warnings.warn("No conversion parameters found for channel '%s'.", channel)
+            warnings.warn("No conversion parameters found for channel '{}'.".format(channel))
                         
         return raw, unit
 

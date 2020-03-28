@@ -11,7 +11,7 @@ with open("README.rst", 'r') as fh:
     long_description = fh.read()
 
 setup(name='jpkfile',
-      version='1.5',
+      version='1.6',
       description='Package to handle reading of files recorded with JPK instruments.',
       long_description=long_description,
       long_description_content_type="text/x-rst",
