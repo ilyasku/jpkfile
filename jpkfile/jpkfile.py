@@ -1,7 +1,7 @@
 """This is the jpkfile module. 
 It reads content of data archives created with devices by JPK Instruments."""
 import warnings
-from struct import unpack
+import struct
 from zipfile import ZipFile
 from dateutil import parser
 import numpy as np
@@ -744,19 +744,17 @@ def extract_data(content, dtype, num_points):
     :return: Numpy array containing digital (non-physical, unconverted) data."""
     point_length, type_code = DATA_TYPES[dtype]
 
-    data = []
-    
-    for i in range(int(len(content) / point_length)):
-        data.append(unpack('!' + type_code,
-                           content[i * point_length:(i + 1) * point_length]))
-
-    if len(data) == num_points:
-        return np.array(data)
-    else:
-        msg = "ERROR! Number of extracted data points is %i," % len(data)
+    n_entries = len(content) // point_length
+    if num_points != n_entries:
+        msg = "ERROR! Number of extracted data points is %i," % n_entries
         msg += " and does not match the number of present data points %i" % num_points
         msg += " as read from the segment's header file."
         raise RuntimeError(msg)
+
+    data = np.array(struct.unpack_from(f'!{num_points}{type_code}', content))
+    data = data[:, np.newaxis]
+
+    return data
 
 
 def parse_header_file(content):
