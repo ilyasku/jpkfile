@@ -3,9 +3,8 @@ It reads content of data archives created with devices by JPK Instruments."""
 import warnings
 import struct
 from zipfile import ZipFile
-from dateutil import parser
+from datetime import datetime
 import numpy as np
-from pytz import utc
 
 #: Dictionary assigning item length (in .dat files) and struckt.unpack abbreviation
 #: to the keys used in header files (.properties).
@@ -764,11 +763,13 @@ def parse_header_file(content):
     if str(content[start][:2]) == "##":
         start = 1
 
+    datestr = content[start][1:].strip()
     try:
         fmt = '%Y-%m-%d %H:%M:%S %Z%z'
-        t = utc.localize(parser.parse(str(content[start][1:]), dayfirst=True)).strftime(fmt)
+        t = datetime.strptime(datestr, fmt)
     except:
-        t = parser.parse(content[start][1:])
+        fmt = "%a %b %d %H:%M:%S %Z %Y"
+        t = datetime.strptime(datestr, fmt)
 
     header_dict['date'] = t
 

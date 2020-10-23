@@ -11,7 +11,7 @@ with open("README.rst", 'r') as fh:
     long_description = fh.read()
 
 setup(name='jpkfile',
-      version='1.6',
+      version='1.6.1',
       description='Package to handle reading of files recorded with JPK instruments.',
       long_description=long_description,
       long_description_content_type="text/x-rst",
@@ -23,7 +23,6 @@ setup(name='jpkfile',
           "console_scripts": [],
           "gui_scripts": []
       },
-      install_requires=['numpy',
-                        'python-dateutil', 'pytz'],
+      install_requires=['numpy'],
       packages=['jpkfile'],
       zip_safe=False)
