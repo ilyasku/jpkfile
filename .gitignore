@@ -22,3 +22,6 @@ docs/built
 # local files
 .idea
 venv
+
+#
+examples
